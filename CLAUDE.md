@@ -54,7 +54,10 @@ enforce that with tool scope, not just instructions.
 Students converting textbooks and papers · professionals clearing a reading
 backlog on commutes · **blind and low-vision users who depend on reliable TTS,
 treated as a primary population** · casual readers converting ebooks and
-articles. Languages: English, Spanish, French, Haitian Creole. Consumer risk
+articles. Languages: **English, Spanish, French.** *(Haitian Creole was removed
+from scope by the owner on 2026-08-08 — see `docs/architecture/0005`. It is not
+deferred; it is out. `ht` uploads are refused by the §3.5 no-route row with an
+announced `blocked_language_unsupported`, not silently mishandled.)* Consumer risk
 profile, user-uploaded copyrighted documents, paid credits.
 
 ### Re-audit by finding ID
@@ -184,7 +187,7 @@ is *not* used from this project — one mechanism only (finding J-m1).
 | AI eval, cost-per-interaction | **Oracle** | `ai/oracle.md` |
 | Legal, DMCA, privacy | **Comply** | `operations/comply.md` |
 | Billing, ledger, refunds | **Ledger** | `operations/ledger.md` |
-| i18n (en / es / fr / ht) | **Tongue**, **Locale** | `platform/` |
+| i18n (en / es / fr) | **Tongue**, **Locale** | `platform/` |
 | Test strategy | **Probe** | `quality/probe.md` |
 
 **Halo reviews every phase — 0, 0.5, 1, 2, 3, 4, 4.5, 5, 6, 7, 8, 9, 10.**
@@ -224,7 +227,10 @@ Consult `studio-zero/CAPABILITIES.md` before proposing any tool or dependency.
    legal liability, not a backlog item.
 7. **Users are told where their documents go.** A subprocessor list is
    maintained and disclosed. Uploads reach an LLM and up to three TTS vendors —
-   **including Google (Gemini Flash 2.5 TTS), which is the Haitian Creole path**
+   **including OpenRouter and Google** on the Gemini path. Gemini TTS is reached via OpenRouter
+   (`google/gemini-3.1-flash-tts-preview`) with direct Google as the fallback
+   chain, so a document reaches **both** parties — J19-M3, and the routing fact
+   is established at the call site, not in a comment (`docs/architecture/0003`)
    (J14-C2). Generated audio additionally reaches our own transcription sidecar;
    that one is first-party and is disclosed as such, not as a subprocessor.
 

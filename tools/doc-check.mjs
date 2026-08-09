@@ -25,15 +25,30 @@
  */
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const DOCS = {
   spec: 'resources/specs/2026-08-08-audiomax-backend-design.md',
   roadmap: 'resources/roadmap/2026-08-08-backend-roadmap.md',
   claude: 'CLAUDE.md',
   readme: 'README.md',
+  // J19-M2 — the committed documentation surface roughly doubled and none of it
+  // was read by any check. Every site of J19-M1 but one sat in this blind region.
+  contributing: 'CONTRIBUTING.md',
+  adrIndex: 'docs/architecture/README.md',
+  glossary: 'docs/glossary.md',
+  // H20-M4 — J19-M2 extended DOCS from four files to seven and left the MOST
+  // damaged files outside it. Halo found four Criticals in that blind region
+  // while the gate exited 0. The ADRs are committed, public, and read as settled.
+  codeowners: 'CODEOWNERS',
+  adr1: 'docs/architecture/0001-the-segment-is-the-universal-unit.md',
+  adr2: 'docs/architecture/0002-observe-what-was-spoken-do-not-predict-it.md',
+  adr3: 'docs/architecture/0003-haitian-creole-tts-routing.md',
+  adr4: 'docs/architecture/0004-the-accessibility-gate-is-an-api-conformance-harness.md',
+  adr5: 'docs/architecture/0005-haitian-creole-is-removed-from-scope.md',
 };
 const PRIVATE = new Set(['spec', 'roadmap']);   // gitignored by owner decision
-const CURRENT_REVISION = 18;
+const CURRENT_REVISION = 19;
 // Counted from disk, not hand-maintained — a pinned literal is how the v7
 // version guard came to sit green over its own defect (N7-C9).
 const ROUNDS_ON_DISK = existsSync('resources/audits')
@@ -181,6 +196,42 @@ const INVARIANTS = [
     why: 'H17-C3 — the SPIKE A pass bar is a share of words matched INSIDE the drift bound, so a bound chosen after the measurement sets its own pass rate. The number must be fixed first, and the measurement may move it only publicly with the reason recorded',
     mutate: (t) => t.replace(/\*\*The drift bound is fixed at 250 ?ms BEFORE this spike runs \(H17-C3\)\.\*\*/i,
       'The drift bound is chosen during the spike.') },
+  // J18 §5 — Jury: "the repair for my highest-severity finding of round seventeen
+  // is the least protected line in the document." Delete spec's no-route row and
+  // the routing table is total again, blocked_language_unsupported loses its
+  // raiser, speech_blocker returns 0 for every document -- and the gate exits 0.
+  { id: 'INV-NO-ROUTE', doc: 'spec',
+    re: /\*\*Any other language\*\* \| \*\*NO ROUTE\./,
+    why: 'J17-C1 -- the §3.5 routing table must stay NON-TOTAL. A catch-all row makes routing total over languages, so blocked_language_unsupported can never fire and the pre-payment speech disclosure reports 0 for every document. A disclosure with no raiser is worse than absent',
+    mutate: (t) => t.replace(/\| \*\*Any other language\*\* \| \*\*NO ROUTE\.[^|]*\|/,
+      '| Everything else | Google / Gemini TTS |') },
+  // The align_blocker column has produced a Critical in THREE consecutive rounds
+  // (J15-C1 -> J16-C2 -> J17-C2), always by writing the new enum without deleting
+  // the old. v18 guarded ONE of its four sites. These are the other three.
+  { id: 'INV-SEG-BLOCKER-ARITY', doc: 'spec',
+    re: /`segments\.align_blocker` \(`null｜no_transcriber｜excessive_drop`\)/,
+    why: 'the SEGMENT blocker carries the two VOICE-INDEPENDENT values. Putting transcription_unreliable here stores a (lang, voice) fact in a table with no voice_id -- right for one voice, wrong for every other, discovered after payment (J16-C2)',
+    mutate: (t) => t.replace(/`segments\.align_blocker` \(`null｜no_transcriber｜excessive_drop`\)/,
+      '`segments.align_blocker` (`null｜no_transcriber｜transcription_unreliable`)') },
+  { id: 'INV-RND-BLOCKER-ARITY', doc: 'spec',
+    re: /`segment_renditions\.align_blocker`\s*\n?\(`null｜transcription_unreliable｜wrong_match`\)/,
+    why: 'the RENDITION blocker must carry THREE values. Drop transcription_unreliable and the column cannot hold the ht pre-payment word-sync disclosure -- the spec twin of INV-RM-BLOCKER-ARITY (J17-C2)',
+    mutate: (t) => t.replace(/\(`null｜transcription_unreliable｜wrong_match`\)/,
+      '(`null｜wrong_match`)') },
+  { id: 'INV-RM-SEG-ARITY', doc: 'roadmap',
+    re: /`segments\.align_blocker`\*\* \(`null｜`\*\*`no_transcriber`\*\*`｜`\*\*`excessive_drop`/,
+    why: 'roadmap:281 -- the FIFTH site of J17-C2, found mid-fix and left unguarded. This is the enum Atlas builds the segment column from',
+    mutate: (t) => t.replace(/\(`null｜`\*\*`no_transcriber`\*\*`｜`\*\*`excessive_drop`\*\*`\)/,
+      '(`null｜`**`no_transcriber`**`｜`**`transcription_unreliable`**`)') },
+  // hallucination_rate is, by the roadmap's own words, "the only one of the
+  // metrics that distinguishes ht from en". It appeared once and in no check.
+  { id: 'INV-RM-HALLUCINATION', doc: 'roadmap',
+    // J19-m2 / H20-M6, now PROVEN weak: this was a bare presence check, and
+    // adding a second mention of the metric elsewhere in the roadmap made the
+    // mutation a no-op. Anchored to the SPIKE A item it actually guards.
+    re: /3b\. \*\*`hallucination_rate`\*\*/,
+    why: 'H17-C3 -- p95_abs_error_ms is a TIMING bound and cannot see the documented ht failure mode: a fluently hallucinated token timed to 50ms and mapped to the wrong word. Delete this metric and SPIKE A cannot distinguish Creole from English',
+    mutate: (t) => t.replace(/3b\. \*\*`hallucination_rate`\*\*/, '3b. **`token_error_rate`**') },
   { id: 'INV-OFFSETS', doc: 'spec', re: /len\(block_start_offsets\)/,
     why: 'without the length invariant nothing can be announced at a position',
     mutate: (t) => t.replace(/len\(block_start_offsets\)/, 'len(offsets)') },
@@ -611,6 +662,48 @@ function runChecks(src) {
     }
   }
 
+  // 8. STAGED STATE (J22-C1). The gate reads the WORKING TREE; `git commit`
+  // writes the INDEX. Nothing reconciled them, so a green gate and a Jury pass
+  // could both be earned on files the commit would not carry -- and were: three
+  // Criticals were repaired on disk and the staged blobs still held the broken
+  // text verbatim. Round 18 ruled that the gate governs "the file set under
+  // review" and settled spec-vs-commit-set; this is the other axis.
+  //
+  // J23-M4: this said "advisory by design" while `process.exit(findings.length ? 1 : 0)`
+  // treats EVERY finding as blocking -- a false self-description inside the section
+  // that exists to check what the artifacts claim about this tool. It IS a hard gate,
+  // and that is the right call: a pass earned on unstaged files is not a pass. The
+  // comment now matches the code.
+  try {
+    const dirty = execSync('git diff --name-only', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean);
+    const GATE_RELEVANT = (f) => Object.values(DOCS).includes(f)
+      || f.startsWith('resources/audits/')
+      // J23-M4: spike-a-results.json was one of the three blobs proved unstaged in
+      // round 22 and this filter could not see it -- the check missed a third of the
+      // Critical it was written for.
+      || f.startsWith('aligner/')
+      || f === 'CODEOWNERS' || f === '.gitignore' || f === '.gitattributes'
+      // J24-M7: this allowlist did not contain the file it lives in. An unstaged
+      // edit to the gate tool -- the file carrying every guard repair -- was
+      // invisible to the check built to catch unstaged edits. Same self-exemption
+      // shape as the tool never reading itself in DOCS.
+      || f.startsWith('tools/') || f.startsWith('docs/') || f.startsWith('resources/');
+    const untracked = execSync('git ls-files --others --exclude-standard', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+      .split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean).filter(GATE_RELEVANT);
+    const tracked = dirty.filter(GATE_RELEVANT).concat(untracked);
+    if (tracked.length) {
+      // J23-m1: attribute to the DOCS key when the first dirty path is one, so the
+      // finding does not blame a document with no defect. Paths are in the message.
+      const attribKey = Object.keys(DOCS).find((k) => DOCS[k] === tracked[0]) || 'readme';
+      add('MAJOR', 'staged-state', attribKey, 0,
+        `[STAGED] ${tracked.length} gate-relevant file(s) differ between the working tree ` +
+        `and the index: ${tracked.slice(0, 4).join(', ')}${tracked.length > 4 ? ', …' : ''}. ` +
+        `This gate read the working tree; a commit would write the index. Run \`git add\` ` +
+        `and re-run before treating a pass as applying to what ships.`);
+    }
+  } catch { /* not a git repo, or git unavailable -- not a documentation defect */ }
+
   // 7. SELF-DESCRIPTION. Jury round 7: "It already checks the documents; it
   // doesn't yet check what the documents say about it." Every claim the
   // artifacts make ABOUT this tool, and about their own revision, is checked.
@@ -632,12 +725,76 @@ function runChecks(src) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
           `[SD-ROSTER] roster says rounds 1–${m[1]}; ${ROUNDS_ON_DISK} audit records exist`);
       }
+    // J24-M4 -- the single most recurrent defect in this repository (J18-M3 ->
+    // J19-M1 -> J23-M1 -> J24-M2, four recurrences) had NO CHECK. SD-ROSTER knew
+    // the range form and the filename form and not the plain-prose count, so the
+    // suite reported 54 passed while three documents misstated how many audits
+    // exist. 54 measures guards that exist, not defects that recur.
+    // Never applied to resources/audits/: a record states what was true at the
+    // time it was written. Normalising those counts rewrites history -- which is
+    // exactly what a blanket regex did on its first run here, turning round 19's
+    // "claimed 17 audit records; the commit made 18" into a sentence that says
+    // nothing. Evidence is not a thing to tidy.
+    for (const m of txt.matchAll(/([0-9]{1,3})\s+(?:committed\s+)?audit records/gi)) {
+      if (Number(m[1]) !== ROUNDS_ON_DISK) {
+        add('MAJOR', 'self-description', key, lineOf(txt, m.index),
+          `[SD-COUNT-AUDITS] claims ${m[1]} audit records; ${ROUNDS_ON_DISK} exist on disk`);
+      }
+    }
     }
     // The roadmap enumerates rounds as a FILENAME list, which the range form
     // above cannot see — so the guard sat green over a stale roster (N8-M1).
     // `\d` not `\d+` made `-round10.md` parse as round 1 — the guard would have
     // reported a stale roster forever once the count reached double digits.
-    const named = [...txt.matchAll(/-round(\d+)\.md/g)].map((x) => Number(x[1]));
+    // J19-M2 / J16-M8 x3 — SD-ROSTER above fires only when a roster claim is
+    // LESS than ROUNDS_ON_DISK, and ROUNDS_ON_DISK is counted from the very
+    // directory the roster describes. So it catches a roster that undercounts
+    // and is structurally blind to the opposite: a document CITING a round whose
+    // record was never written. That is the J16-M8 defect, which has now
+    // occurred three times, twice found by a reviewer reconstructing its own
+    // subject from a chat message -- which CLAUDE.md:66-71 forbids.
+    // This is the missing direction: cite a round, and its record must exist.
+    const cited = [];
+    // J24-M6: /round[- ]N/ demands a separator right after 'round', so 'rounds 18'
+    // and 'rounds 1-30' and 'rounds 23 and 24' never matched -- and the sentence
+    // added to the README this round sat exactly in that blind spot.
+    for (const m of txt.matchAll(/rounds?[ -]+([0-9]{1,3})(?:\s*(?:[-–]|and)\s*([0-9]{1,3}))?/gi)) {
+      cited.push(Number(m[1]));
+      if (m[2]) cited.push(Number(m[2]));
+    }
+    for (const m of txt.matchAll(/-round([0-9]{1,3})\.md/g)) cited.push(Number(m[1]));
+    // J23-M3 -- was [JNHR] x [CMm]: four alphabets, ONE severity class. A guard
+    // built to ensure every cited finding has a written record could not see a
+    // citation of a BLOCKER, nor single-digit rounds (N8-M8, R5-C6). Widened.
+    for (const m of txt.matchAll(/[A-Z]([0-9]{1,2})-[A-Za-z][0-9]/g)) cited.push(Number(m[1]));
+    // H-prefixed. It sat green over TWO missing Halo records while five files
+    // cited them. A guard that knows one alphabet checks one reviewer.
+    if (cited.length && Math.max(...cited) > ROUNDS_ON_DISK) {
+      add('MAJOR', 'self-description', key, 0,
+        `[SD-UNWRITTEN] cites round ${Math.max(...cited)} but only ${ROUNDS_ON_DISK} audit ` +
+        `records exist on disk. CLAUDE.md requires every report stored, and a re-audit to ` +
+        `resolve each prior finding BY ID -- which is impossible against a record ` +
+        `that was never written. Write it before citing it.`);
+    }
+    // H21 / J22-M8 -- SD-ROSTER cannot tell a ROSTER from a CITATION. An ADR's
+    // References section legitimately cites the specific records behind that
+    // decision; demanding it reach the newest round makes the cheapest fix a
+    // MIS-citation, and that is exactly what the last run produced -- three ADRs
+    // now cite -round19.md for findings recorded in -round18.md. Only documents
+    // that MAINTAIN a roster are held to completeness.
+    const ROSTER_KEEPERS = new Set(['spec', 'roadmap', 'readme', 'adrIndex']);
+    if (!ROSTER_KEEPERS.has(key)) continue;
+    // J25-M3 -- this guard REWARDED the defect it was narrowed to stop. Demanding
+    // that the highest cited record reach ROUNDS_ON_DISK makes the cheapest fix a
+    // MIS-citation, and it produced three in a row on one sentence (round21 ->
+    // round22 -> round24). Scoping it to roster-keeping DOCUMENTS did not help:
+    // readme and adrIndex are roster keepers whose broken citations were prose
+    // citations of a specific verdict, not rosters. The distinction is FORM, not
+    // document identity -- a roster enumerates a RUN of records; a citation names
+    // one. Completeness is only demanded of the former.
+    const allNamed = [...txt.matchAll(/-round(\d+)\.md/g)].map((x) => Number(x[1]));
+    const isRoster = allNamed.length >= 4 && (Math.max(...allNamed) - Math.min(...allNamed)) <= allNamed.length + 2;
+    const named = isRoster ? allNamed : [];
     if (named.length && Math.max(...named) < ROUNDS_ON_DISK) {
       add('MAJOR', 'self-description', key, lineOf(txt, txt.indexOf('-round')),
         `[SD-ROSTER] filename roster stops at -round${Math.max(...named)}.md; ${ROUNDS_ON_DISK} records exist`);

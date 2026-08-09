@@ -1,0 +1,19 @@
+# LF everywhere, on every platform.
+#
+# WHY THIS FILE EXISTS. This host has `core.autocrlf=true` and no .gitattributes,
+# so git rewrites LF to CRLF on checkout. `tools/doc-check.mjs` matches fenced
+# blocks as ```ts\n — LF-anchored — so a CRLF working copy makes EVERY TypeScript
+# block in the spec invisible to the gate. When that happened on 2026-08-08 it
+# did not fail loudly: the forward field-coverage check iterated an empty set and
+# PASSED SILENTLY, while the reverse check produced 33 findings pointing at
+# innocent sections. The gate can be made to report "clean" over a parse that
+# read nothing, which is the failure the tool was rebuilt in round 7 to end.
+#
+# `[HARVEST]` in doc-check.mjs is the detector for that class. This file is the
+# prevention. Keep both.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.wav binary
+*.mp3 binary

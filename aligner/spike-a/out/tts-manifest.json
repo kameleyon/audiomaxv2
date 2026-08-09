@@ -1,0 +1,32 @@
+[
+  {
+    "lang": "en",
+    "provider": "lemonfox",
+    "voice": "Adam",
+    "chars": 130,
+    "bytes": 558046,
+    "audio_seconds": 11.63,
+    "sha256": "8bb935d2c114502615130a61b0ba9fdafa9585fa092b52487dc5bf1422acccd5",
+    "path": "en.wav"
+  },
+  {
+    "lang": "es",
+    "provider": "gemini",
+    "voice": "Enceladus",
+    "chars": 125,
+    "bytes": 616364,
+    "audio_seconds": 12.84,
+    "sha256": "7dca909dc7c34ba182c044582aebff17a69f15c8495d803da7d65d83a5fed73e",
+    "path": "es.wav"
+  },
+  {
+    "lang": "fr",
+    "provider": "gemini",
+    "voice": "Enceladus",
+    "chars": 117,
+    "bytes": 549164,
+    "audio_seconds": 11.44,
+    "sha256": "b5461e10f21f9811ff27dc4913c9240c9fe2fad71a66e855e7eb6184971fd61a",
+    "path": "fr.wav"
+  }
+]

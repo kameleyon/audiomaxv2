@@ -78,3 +78,14 @@ venv/
 npm-debug.log*
 .DS_Store
 Thumbs.db
+
+# SPIKE A audio fixtures ARE committed (J23-M5). They were briefly excluded to save
+# 1.6 MB on the reasoning that they are "regenerable for ~$0.001". Jury: **regenerable
+# is not the same claim as reproducible.** TTS output is not deterministic, so
+# discarding the audio removes the only route to independently re-check a measurement
+# -- which is leg (c) of the admissibility test Jury set for this very spike. It also
+# worsened an open finding (J22-M1, audio provenance covering 1 of 3 languages) by
+# making the other two unrecoverable from the repository.
+#
+# 1.6 MB is the cost of being able to falsify our own result. That is a good trade,
+# and the habit it corrects is the dangerous one: tidying is how evidence goes missing.

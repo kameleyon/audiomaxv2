@@ -1,0 +1,108 @@
+# CODEOWNERS — audiomax.ai
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THESE ARE REVIEW ROLES, NOT GITHUB ACCOUNTS.
+#
+# The names below are Studio Zero review agents, not usernames or teams. GitHub
+# resolves an owner to a user, a team or an email address, and none of these
+# resolve to any of those — so GitHub will not auto-assign from this file and
+# will report the entries as invalid if branch protection is switched on with
+# "require review from Code Owners".
+#
+# This file is therefore ADVISORY until real handles exist. It answers "who
+# reviews a change here, and against which persona" — which is the question that
+# actually gets asked, and which was previously answered only by reading
+# CLAUDE.md and the roadmap side by side.
+#
+# TO MAKE IT ENFORCEABLE: replace each role with the `@handle` of the human or
+# team that carries it, keeping the role name in the trailing comment so the
+# reasoning survives the substitution.
+#
+# Personas live at C:\Users\Administrator\studio-zero\agents\<layer>\<name>.md
+# and are invoked by spawning a subagent with the persona file as its system
+# context. Reviewers get READ-ONLY tools — Jury Rule 4 is enforced by tool
+# scope, not by instructions.
+#
+# AUTHORITY. CLAUDE.md owns the agent roster. The ROADMAP is the sole authority
+# for which reviewer gates which PHASE — this file maps PATHS, which is a
+# different question, and it must not be read as a phase assignment. Where a
+# path and a phase disagree, the roadmap wins and this file is defective.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── Default ──────────────────────────────────────────────────────────────────
+# Jury owns the commit gate for everything. No path is exempt.
+*                               Jury            # audit/jury.md
+
+
+# ── Governance and the review trail ──────────────────────────────────────────
+/CLAUDE.md                      Jury            # the working agreement; owner-approved changes only
+/resources/audits/              Jury            # verdicts and punch lists — committed, never rewritten
+/.gitignore                     Vault  Jury     # security/vault.md — the audits exception and the secret rules
+
+
+# ── Documentation (Scribe owns; Guide reports to Scribe) ─────────────────────
+/README.md                      Scribe          # docs/scribe.md — mirrors, never originates
+/CONTRIBUTING.md                Scribe
+/CODEOWNERS                     Scribe
+/docs/                          Scribe
+/docs/architecture/             Scribe  Forge   # backend/forge.md co-signs architectural decisions
+/docs/glossary.md               Scribe  Tongue  # platform/tongue.md — terms become catalogue strings
+/docs/help/                     Guide  Proof    # docs/guide.md drafts; audit/proof.md grades before it ships
+/docs/api/                      Nexus  Scribe   # backend/nexus.md owns the contract; Scribe owns the reference
+
+
+# ── The documentation gate ───────────────────────────────────────────────────
+# Weakening a check to make a document pass is the failure this tool exists to
+# prevent, so a change here needs the reviewer who audits guard quality.
+/tools/doc-check.mjs            Forge  Jury
+
+
+# ── Backend services (planned — none of these paths exist yet) ───────────────
+/worker/                        Forge           # backend/forge.md
+/worker/src/queue/              Queue           # backend/queue.md — job queues and the render pipeline
+/worker/src/providers/          Forge  Oracle   # ai/oracle.md — cost-per-interaction and eval
+/worker/src/adapters/           Shield  Halo    # security/shield.md (SSRF, archives) + audit/halo.md (extraction fidelity)
+/worker/src/normalize/          Tongue  Halo    # per-language rule sets and what gets spoken
+/worker/src/match/              Forge  Halo     # the sole placer of highlights — ADR-0002
+/aligner/                       Forge  Queue    # Python sidecar: transcription + match; container sizing
+
+
+# ── Data, schema, and access control ─────────────────────────────────────────
+/supabase/                      Atlas  Vault    # data/atlas.md schema; backend/vault.md RLS, keys, secrets
+/supabase/migrations/           Atlas
+/supabase/policies/             Vault  Cipher   # security/cipher.md
+
+
+# ── API surface and clients ──────────────────────────────────────────────────
+/openapi/                       Nexus  Scribe
+/web/                           Halo  Optic     # audit/halo.md WCAG 2.2 AA; audit/optic.md UX
+/apps/mobile/                   Halo  Optic     # TalkBack and VoiceOver/iOS live here
+
+
+# ── Money ────────────────────────────────────────────────────────────────────
+# Credits, the ledger, refunds, and any payment copy a user reads.
+/worker/src/credits/            Ledger  Halo    # operations/ledger.md
+/worker/src/payments/           Ledger  Proof   # payments is a shipping surface handling money for blind users
+
+
+# ── Legal, privacy, and disclosure ───────────────────────────────────────────
+# Phase 0.5 gates ALL ingest. Nothing here is a backlog item.
+/legal/                         Comply          # operations/comply.md — DMCA, ToS/AUP, retention
+/docs/legal/                    Comply  Proof
+/docs/subprocessors.md          Comply  Vault   # OpenRouter AND Google are both named subprocessors on the ht path — ADR-0003
+
+
+# ── i18n ─────────────────────────────────────────────────────────────────────
+# en / es / fr. An untranslated enum token is not a status message a user
+# can receive (WCAG 4.1.3), so the catalogue is reviewed, not translated blind.
+/i18n/                          Tongue  Locale  # platform/tongue.md, platform/locale.md
+/i18n/ht/                       Tongue  Halo    # the language with the fewest alternatives for its speakers
+
+
+# ── Tests and fixtures ───────────────────────────────────────────────────────
+# Golden-file fixtures are PUBLIC-DOMAIN ONLY (Jury J-M6). Where a copyrighted
+# artifact is needed to reproduce a bug, store the Block[] snapshot and a hash.
+/tests/                         Probe           # quality/probe.md
+/tests/a11y/                    Probe  Halo     # the API conformance harness — ADR-0004
+**/fixtures/                    Probe  Comply

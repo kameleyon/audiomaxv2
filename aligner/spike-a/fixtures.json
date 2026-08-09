@@ -1,0 +1,40 @@
+{
+  "_comment": [
+    "SPIKE A fixtures — the reference text for each supported language.",
+    "",
+    "WHY THESE SENTENCES. Each fixture is chosen to exercise the failure mode the",
+    "match step exists to catch, not to be easy. Every one contains at least one",
+    "token whose SPOKEN form differs from its DISPLAY form — a numeral, an",
+    "abbreviation, a symbol, or a year. Those are exactly the places where the",
+    "predicted-alignment design broke (spec 6.2) and where the observed->display",
+    "match must now prove itself. A fixture of plain prose would pass trivially",
+    "and tell us nothing.",
+    "",
+    "`expect_hard` names the display substrings we KNOW will not appear verbatim",
+    "in a transcript. If a run reports 100% matched and these were not resolved by",
+    "the normalizer path, the harness is measuring the wrong thing."
+  ],
+  "languages": {
+    "en": {
+      "voice": "Adam",
+      "provider": "lemonfox",
+      "text": "Dr. Chen published the results in 1984. Section 3 of the report covers pages 47 to 52, and the sample size was 1,250 participants.",
+      "expect_hard": ["Dr.", "1984", "3", "47", "52", "1,250"]
+    },
+    "es": {
+      "voice": "Enceladus",
+      "provider": "gemini",
+      "text": "La Dra. Herrera publicó los resultados en 1984. La sección 3 del informe abarca las páginas 47 a 52, con 1.250 participantes.",
+      "expect_hard": ["Dra.", "1984", "3", "47", "52", "1.250"]
+    },
+    "fr": {
+      "voice": "Enceladus",
+      "provider": "gemini",
+      "text": "Le Dr Chen a publié les résultats en 1984. La section 3 du rapport couvre les pages 47 à 52, avec 1 250 participants.",
+      "expect_hard": ["Dr", "1984", "3", "47", "52", "1 250"]
+    }
+  },
+  "_out_of_scope": {
+    "ht": "Removed from scope 2026-08-08 (docs/architecture/0005). Kept as a NOTE, not a fixture: if ht is ever restored, this file is where its fixture goes, and the pass bar must be measured before the routing row is re-added, not after."
+  }
+}

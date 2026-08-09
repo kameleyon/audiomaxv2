@@ -18,22 +18,24 @@ a Python transcription + word-alignment sidecar (WhisperX), and Supabase.
 **Read this section before anything else.** This repository has **no
 implementation code.** There is nothing to install, build, or run. Any
 instruction elsewhere that tells you to `npm install` this project is wrong.
-What is committed is the working agreement, this README, the documentation gate
+What is committed is the working agreement, this README, `CONTRIBUTING.md`,
+`CODEOWNERS`, the public documentation in `docs/`, the documentation gate
 (`tools/doc-check.mjs`) and the review trail — see the table below.
 
 | What | State |
 | --- | --- |
 | Implementation code | **None.** Not started. |
-| `tools/doc-check.mjs` | Present and running. The documentation consistency gate — bidirectional field coverage, migration coverage, 17 prose-regression guards, and an end-to-end control-chain trace. `node tools/doc-check.mjs` must exit 0 before a commit; `--self-test` mutates the live documents and runs the shipped checks, proving that **the check IDs with a mutation** fire on their own defect. Six check families are verified by hand, not by the harness — it reports which. Exits 2 on a fresh clone, because the documents it checks live in the gitignored `resources/`. |
-| Commits on `main` | The founding documents, the working agreement, the gate tool and **17 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent ruling on it is `FAIL`, which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
-| `docs/` (public documentation) | **Does not exist yet.** Created in Phase 0. |
+| `tools/doc-check.mjs` | Present and running. The documentation consistency gate — bidirectional field coverage, migration coverage, 17 prose-regression guards, and an end-to-end control-chain trace. `node tools/doc-check.mjs` must exit 0 before a commit; `--self-test` mutates the live documents and runs the shipped checks, proving that **the check IDs with a mutation** fire on their own defect. Six check IDs and four of the five control chains are verified by hand, not by the harness — it names them in its output. Exits 2 on a fresh clone, because the documents it checks live in the gitignored `resources/`. **Exit 2 is not a pass.** |
+| Commits on `main` | The founding documents, the working agreement, the gate tool and **25 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent *recorded* ruling on it is `PASS WITH FIXES` (round 25), which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
+| `docs/` (public documentation) | **Present** — created in Phase 0. 5 ADRs in [`docs/architecture/`](docs/architecture/) and the [glossary](docs/glossary.md). `docs/help/` (Guide) does not exist yet. |
+| `CONTRIBUTING.md`, `CODEOWNERS` | **Present** — how to work in this repo, and which review role owns which path. |
 | `assets/` | Present — brand assets. Contents are managed by the design tooling, not by this repo's authors; do not assume a fixed file list. |
 | `CLAUDE.md` | Present — the working agreement. Authoritative. |
 | `.gitignore` | Present. |
 | `resources/specs`, `roadmap`, `research` | Present on disk, **gitignored** — never committed. |
 | `resources/audits/` | Present, and **tracked rather than ignored** — the governance trail is versioned and will be in the first commit. |
 | Backend design spec | **Draft, under revision.** See [Design status](#design-status-the-spec-is-not-settled). |
-| Backend roadmap | v18. Phase 0 open; `git init` and the README are done. |
+| Backend roadmap | v19. Phase 0 open; `git init` and the README are done. |
 
 What a new contributor can do today is **understand the design and the review
 gate**, then pick up a Phase 0 item. See [Orientation](#orientation-what-to-read-and-in-what-order).
@@ -57,7 +59,7 @@ The audience rubric is fixed and every review is graded against it.
 | **Blind and low-vision users** | **Reliable TTS they can depend on.** Not a convenience feature — the product |
 | Casual readers | Ebooks and long articles, low friction |
 
-**Languages:** English, Spanish, French, Haitian Creole.
+**Languages:** English, Spanish, French.
 
 Accessibility is not a workstream that runs alongside the product; it *is* the
 product. WCAG 2.2 AA is a floor, not a target, and **Halo** (the accessibility
@@ -175,7 +177,7 @@ flowchart TB
 
   subgraph rail["Railway"]
     K["worker/ — Node + TypeScript<br/>the pipeline, long-running jobs"]
-    P["aligner/ — Python sidecar<br/>POST /align, stateless"]
+    P["aligner/ — Python sidecar<br/>POST /transcribe, stateless"]
   end
 
   subgraph sb["Supabase"]
@@ -208,8 +210,8 @@ touching the pipeline.
 
 ## Repository layout
 
-Only `assets/`, `CLAUDE.md`, `README.md`, `.gitignore` and `resources/` exist
-today. Everything else is the planned shape, established in Phase 0.
+Only the directories marked `present` exist today. Everything else is the planned
+shape, established in Phase 0.
 
 ```
 audioMax/
@@ -218,7 +220,9 @@ audioMax/
 ├── worker/            Node/TS on Railway — the pipeline                ── planned
 ├── aligner/           Python sidecar — WhisperX transcribe + match     ── planned
 ├── supabase/          Migrations, RLS policies, thin edge functions    ── planned
-├── docs/              Public technical documentation (Scribe)          ── planned
+├── docs/              Public technical documentation (Scribe)          ── present
+│   ├── architecture/  ADRs — the 5 decisions and why                ── present
+│   ├── glossary.md    The vocabulary you cannot infer                  ── present
 │   └── help/          Public user documentation (Guide)                ── planned
 ├── tools/             doc-check.mjs — the documentation consistency gate ── present
 ├── assets/            Brand assets (managed by design tooling)         ── present
@@ -226,6 +230,8 @@ audioMax/
 │   ├── specs/ roadmap/ research/                                       ── GITIGNORED
 │   └── audits/        Jury verdicts                                    ── COMMITTED
 ├── CLAUDE.md          Working agreement — authoritative                ── present
+├── CONTRIBUTING.md    How to work in this repo, and both gates         ── present
+├── CODEOWNERS         Path → review role (advisory; see the header)    ── present
 └── README.md          This file                                        ── present
 ```
 
@@ -268,7 +274,7 @@ Spawn a subagent whose system context is the full contents of
 1. **The file set under review** — paths, not summaries.
 2. **The audience rubric** — Jury refuses to audit without one. For audiomax:
    students, commuting professionals, blind / low-vision users relying on TTS,
-   and casual readers, across `en` / `es` / `fr` / `ht`.
+   and casual readers, across `en` / `es` / `fr`.
 3. **The relevant spec** from `resources/specs/`.
 
 Jury returns a **Verdict**, a severity-sorted **Punch List** with owners, and a
@@ -306,7 +312,7 @@ reviewers. The ones this project leans on most:
 | Schema design | **Atlas** | `data/atlas.md` |
 | Security | **Shield** / **Cipher** | `security/` |
 | AI eval, cost-per-interaction | **Oracle** | `ai/oracle.md` |
-| i18n (`en`/`es`/`fr`/`ht`) | **Tongue** / **Locale** | `platform/` |
+| i18n (`en`/`es`/`fr`) | **Tongue** / **Locale** | `platform/` |
 | Test strategy | **Probe** | `quality/probe.md` |
 
 Personas live at `C:\Users\Administrator\studio-zero\agents\<layer>\<name>.md`.
@@ -328,7 +334,7 @@ These are not preferences. A change that violates one does not pass the gate.
 | 4 | **Credits are characters** (1 credit = 1,000 characters synthesised). Providers bill **spoken** characters — counted after normalization, since `1984` is four characters and twenty spoken — and every render is preflighted with an exact quote before a single character reaches a provider. | Surprise debits. Partial renders. |
 | 5 | **Provider keys never leave the worker.** Clients get short-lived signed URLs. RLS on every table carrying user data — by `user_id` where the column exists, by join through `documents` otherwise; `voices` is a global catalogue and is exempt. URL fetching is egress-controlled. | Key exfiltration; cross-tenant reads; SSRF. |
 | 6 | **Users can delete their data.** Every document and account has a real erasure path that cascades to storage. | A DMCA takedown you cannot honour. Legal liability, not backlog. |
-| 7 | **Users are told where their documents go.** A subprocessor list is maintained and disclosed — uploads reach an LLM and up to three TTS vendors — **including Google (Gemini Flash 2.5 TTS), the Haitian Creole path**; generated audio also reaches our own first-party transcription sidecar. | Undisclosed processing of medical, legal, and unpublished material. |
+| 7 | **Users are told where their documents go.** A subprocessor list is maintained and disclosed — uploads reach an LLM and up to three TTS vendors — **including both OpenRouter and Google on the Gemini path** ([ADR-0003](docs/architecture/0003-haitian-creole-tts-routing.md)); generated audio also reaches our own first-party transcription sidecar. | Undisclosed processing of medical, legal, and unpublished material. |
 
 **A legal gate blocks all ingest.** Roadmap Phase 0.5 — DMCA agent registration,
 takedown endpoint, repeat-infringer policy, ToS/AUP, retention policy,
@@ -345,9 +351,18 @@ The asymmetry is deliberate.
 
 ## Design status: the spec is not settled
 
-**Both reviewers returned `FAIL` on the design documents.** The backend design
-spec is **under revision** following accessibility review (Halo) and audit review
-(Jury).
+**The most recent recorded verdict on the design documents is a Jury `PASS WITH FIXES`** —
+**round 25**, `resources/audits/2026-08-08-founding-documents-round25.md`:
+0 Blocker · 0 Critical · 5 Major, all tracked with an owner and a date. Round 22 was `FAIL` (2 Critical) and rounds 18-19 returned **`PASS WITH FIXES`**
+(0 Blocker, 0 Critical); **round 17's `FAIL` is superseded.** Halo, the
+accessibility auditor, returned **`ENABLES`** in round 21 — 0 Blocker · 3 Critical
+· 15 Major, and **no foreclosure found**. Halo cannot issue `PASS` before
+implementation and has not.
+
+*(J24-M3: this paragraph carried **round 17's** counts under a **round-22** link
+while `docs/architecture/README.md`, in the same commit, correctly recorded round
+17 as superseded — two committed documents contradicting each other on governance
+state. Read `resources/audits/` for ground truth; it is committed for that reason.)*
 
 What that means for you:
 
@@ -372,18 +387,23 @@ asked and how it was answered. **SPIKE A is now the only one gating word sync.**
 
 | Question | Why it matters |
 | --- | --- |
-| **Which transcription + word-alignment engine (WhisperX or equivalent), and does it cover `es` / `fr` / `ht`?** | **Highest risk in the design**, and now the only Phase 0 spike gating word sync. Haitian Creole coverage is genuinely uncertain. |
+| **Which transcription + word-alignment engine (WhisperX or equivalent), and does it cover `en` / `es` / `fr`?** | **Highest risk in the design**, and now the only Phase 0 spike gating word sync. Coverage for `en`/`es`/`fr` is now measured, not uncertain. |
 | ~~**Can provider text-normalization be disabled?**~~ | **RETIRED (`R14-A1`).** We transcribe the audio we generated, so provider normalization is observed rather than predicted and nothing depends on the answer. |
-| **Is transcription accurate enough per language — especially `ht`?** | Word sync now rests on recognition quality, which is materially weaker in Haitian Creole than in `en`/`fr`/`es`, and whose failure mode is *fluent* hallucination. **SPIKE A** must return a per-language accuracy matrix with a numeric pass bar. Until it does, `ht` word-sync quality is unknown and the quote must say so rather than guess. |
-| ~~Which provider actually serves Haitian Creole TTS~~ | **CLOSED 2026-08-08, zero API calls.** Resolved from production code in the reference stack: `ht` routes to **Google Gemini Flash 2.5 TTS**, which speaks it natively; no code path calls Google Cloud TTS, so the comment claiming otherwise is stale. `ht` is **not** a launch blocker. What remains open is the row above — whether *transcription* is accurate enough in Creole, which is a different question with a different answer shape (a WER number against a bar, not a yes/no). |
+| **Is transcription accurate enough per language?** | Word sync now rests on recognition quality, which is materially weaker in low-resource languages, and whose failure mode is *fluent* hallucination. **SPIKE A ran 2026-08-08**: within the 250 ms drift bound, `en` 70.8%, `es` 77.3%, `fr` 79.2% — **all three below the 95% bar**, p95 393-540 ms. Match rate is 100%; the gap is placement, not recognition. Self-hosted CPU transcription costs ~$0.07-$0.15 per 9-hour book against $5.40 for a per-minute vendor. |
+| ~~Which provider actually serves Haitian Creole TTS~~ | **CLOSED 2026-08-08, zero API calls.** Resolved from production code in the reference stack: **Haitian Creole** was served natively by a **Gemini TTS** model, reached **via OpenRouter** with direct Google as the fallback; no code path calls Google Cloud TTS. It was **not** a technical blocker — and was then removed from scope by owner decision (`docs/architecture/0005`), so `ht` is now refused at the no-route row and produces no audio. See [ADR-0003](docs/architecture/0003-haitian-creole-tts-routing.md), which also records an **open** conflict between that primary→fallback chain and constraint 2 above. What remains open is the row above — whether *transcription* is accurate enough in Haitian Creole, which is a different question with a different answer shape (a WER number against a bar, not a yes/no). |
 | Does Fish Audio bill per UTF-8 byte? | Unverified, and it backs a schema column. One real billed call on accented French gates it. |
 | Which layout-aware OCR engine | Multi-column reading order. Wrong order is *locally fluent*, so a blind user gets scrambled meaning narrated confidently. |
 | Aligner container sizing | Multi-gigabyte acoustic models per language. If four cannot co-reside, the topology changes. |
 
 The alignment-engine question is the one that can invalidate the design. The
 mitigation is structural: the `Aligner` interface plus *visible, reasoned*
-degradation means an unsupported language loses word highlighting but still
-narrates correctly, and the user is **told**. The product degrades on one axis
+degradation means a **supported** language whose transcription falls below the
+SPIKE A bar loses word highlighting but still narrates correctly, and the user is
+**told before paying**. An **unsupported** language is a different case and must
+not be confused with it: it is refused outright at the §3.5 no-route row, produces
+no audio at all, and is disclosed as `blocked_language_unsupported` in the quote
+(H21-C2 — this paragraph promised an unsupported language "narrates correctly",
+which the design refuses). The product degrades on one axis
 rather than failing.
 
 The inherited provider rate card question is **closed** — it was stale by
@@ -398,7 +418,7 @@ The split is strict and there is no third place. There is no wiki.
 
 | Path | Contents | Git | Owner |
 | --- | --- | --- | --- |
-| `docs/` | Public technical documentation — ADRs, schema docs, API reference, runbooks | **Committed** | Scribe |
+| `docs/` | Public technical documentation — [ADRs](docs/architecture/), the [glossary](docs/glossary.md), schema docs, API reference, runbooks | **Committed** | Scribe |
 | `docs/help/` | Public user documentation — help centre, onboarding, error copy | **Committed** | Guide |
 | `resources/specs/` | Design specs | **Ignored** | — |
 | `resources/roadmap/` | Build checklists | **Ignored** | — |
@@ -428,15 +448,23 @@ wrong docs make you ship bugs.
 
 There is no local environment to spin up yet, so onboarding today means being
 able to *participate* — understand the design, know the gate, pick up a task.
-Budget about 15 minutes.
+
+**Rows 1–5 are the committed repository and take about 18 minutes** — that is
+enough to contribute to Phase 0. Rows 6–8 are the design itself, need the
+gitignored documents, and add about 11 minutes. The 15-minute onboarding target
+applies to *spinning up a local environment*; there is none yet, and this table
+will be rewritten — not appended to — the moment there is.
 
 | # | Read | Minutes | You will know |
 | --- | --- | --- | --- |
 | 1 | This README | 5 | What the product is, what exists, what the rules are |
 | 2 | `CLAUDE.md` | 4 | The working agreement and the commit gate, authoritative |
-| 3 | `resources/specs/2026-08-08-audiomax-backend-design.md` | 5 | The full design — **read it as a draft under revision** |
-| 4 | `resources/roadmap/2026-08-08-backend-roadmap.md` | 2 | The thirteen phases (0, 0.5, 1–4, 4.5, 5–10) and which reviewers gate each one |
-| 5 | `resources/audits/` | 4 | Prior verdicts and open punch lists — **committed and diffable**. Start with the most recent; it tells you what is currently blocking a commit |
+| 3 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | 3 | How to work here: both gates, the commit convention, what git ignores and why |
+| 4 | [`docs/architecture/`](docs/architecture/) | 4 | The 5 decisions that shape everything, and **why** — including the one that was reversed |
+| 5 | [`docs/glossary.md`](docs/glossary.md) | 2 | The vocabulary you cannot infer — segment, rendition, the match step, `align_blocker` |
+| 6 | `resources/specs/2026-08-08-audiomax-backend-design.md` | 5 | The full design — **read it as a draft under revision** |
+| 7 | `resources/roadmap/2026-08-08-backend-roadmap.md` | 2 | The thirteen phases (0, 0.5, 1–4, 4.5, 5–10) and which reviewers gate each one |
+| 8 | `resources/audits/` | 4 | Prior verdicts and open punch lists — **committed and diffable**. Start with the most recent; it tells you what is currently blocking a commit |
 
 Then: the roadmap's **Phase 0 — Foundations** is the only phase currently open.
 It covers the monorepo scaffold, the package-manager pin and lockfile sync that
@@ -448,6 +476,9 @@ Jury audit that must clear the gate above: no open Blocker or Critical.
 ---
 
 ## Conventions
+
+Full detail — both gates, the reconciliation pass, the line-ending hazard — is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). The short form:
 
 **Commits.** Short conventional-commit subject. No narrated body. No AI
 co-author trailer.
