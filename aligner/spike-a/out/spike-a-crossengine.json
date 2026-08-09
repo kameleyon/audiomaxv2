@@ -1,0 +1,55 @@
+{
+  "ran": false,
+  "results": [],
+  "failures": [
+    {
+      "lang": "en",
+      "stage": "hypereal",
+      "error": "RuntimeError: Hypereal returned SEGMENT timings only (keys: ['end', 'start', 'text']). It cannot serve as a word-level reference."
+    },
+    {
+      "lang": "es",
+      "stage": "hypereal",
+      "error": "RuntimeError: Hypereal returned SEGMENT timings only (keys: ['end', 'start', 'text']). It cannot serve as a word-level reference."
+    },
+    {
+      "lang": "fr",
+      "stage": "hypereal",
+      "error": "RuntimeError: Hypereal returned SEGMENT timings only (keys: ['end', 'start', 'text']). It cannot serve as a word-level reference."
+    }
+  ],
+  "preserved_prior_result": [
+    {
+      "lang": "fr",
+      "words_per_sec": 2.89,
+      "median_span_overlap_pct": 0.0,
+      "words_overlapping_50pct": 0.0,
+      "compared_words": 18,
+      "whisper_words": 23,
+      "hypereal_words": 24,
+      "median_delta_ms": 60.0,
+      "p95_delta_ms": 180.0,
+      "agree_within_250ms_pct": 100.0,
+      "hypereal_seconds": 2.0,
+      "whisper_model": "base",
+      "worst": [
+        [
+          "participants",
+          7.26,
+          7.44
+        ],
+        [
+          "couvre",
+          4.38,
+          4.56
+        ],
+        [
+          "avec",
+          6.16,
+          6.32
+        ]
+      ]
+    }
+  ],
+  "_note": "This run produced no rows. The prior result is PRESERVED, not overwritten, and is NOT a measurement of the current audio -- the audio has been corrected since it was written (H26-C1). It is also not a WORD-LEVEL measurement: Hypereal returns SEGMENT timings only, confirmed live on 2026-08-09 for all three languages, and the prior rows were produced while this file still degraded to segment timings and reported them as words. Any figure taken from `results` -- including `agree_within_250ms_pct`, on which the fr voice lock rests (fixtures.json:19) -- is a word-vs-SEGMENT comparison. Do not cite it as word sync."
+}

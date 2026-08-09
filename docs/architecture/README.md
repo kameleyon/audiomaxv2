@@ -4,7 +4,7 @@ An ADR records **why** a decision was made, by whom, and what it costs — for t
 engineer who joins six months from now and has read none of the audit trail.
 
 Until this directory existed, the decisions below lived only as prose inside
-25 audit records and a design spec that is gitignored. That is tribal
+27 audit records and a design spec that is gitignored. That is tribal
 knowledge with a filename. These 5 ADRs are the first correction.
 
 ## Index

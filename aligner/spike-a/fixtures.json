@@ -12,29 +12,76 @@
     "",
     "`expect_hard` names the display substrings we KNOW will not appear verbatim",
     "in a transcript. If a run reports 100% matched and these were not resolved by",
-    "the normalizer path, the harness is measuring the wrong thing."
+    "the normalizer path, the harness is measuring the wrong thing.",
+    "ROUTING CORRECTED 2026-08-09 (owner): es and fr are FISH AUDIO s2-pro, not Gemini. Gemini entered the routing table only as the Haitian Creole path; ht was removed from scope on 2026-08-08, so Gemini left with it. The first SPIKE A run measured es/fr against Gemini audio -- a provider the product will not ship -- which makes that half of the result an artifact of the wrong input, not a measurement of the design.",
+    "VOICE CORRECTED 2026-08-09 (owner): the es fixture was using Jacynthe, an ENGLISH Fish voice, to read Spanish. Fish s2-pro is multilingual so it produced audio, but an English-accented voice reading Spanish is not what ships and is not what should be measured -- it degrades recognition for a reason that has nothing to do with the design. motionmax's Fish roster has no Spanish voice, so this ID comes from Fish's own catalogue, filtered to languages=['es']. fr was already correct (Miriam, French Female).",
+    "fr voice set to Mario (French Male, d12dae2d...) 2026-08-09 per owner. Robert (a5d7dcbb...) is the alternate; both are French Male s2-pro from the reference stack's roster.",
+    "fr LOCKED to Robert (a5d7dcbb..., French Male) 2026-08-09. Measured against Miriam and Mario on identical text and identical engines: Miriam 88.2%, Mario 94.4%, Robert 100% agreement within 250 ms. VOICE CHOICE IS A WORD-SYNC VARIABLE -- a 12-point swing with nothing else changed. This belongs in the voices catalogue as a per-voice property, not as a footnote in a spike.",
+    "HOLDOUT added 2026-08-09: different text, same voices. The per-language calibration offset is FIT on `languages` and SCORED on `holdout`. Fitting and scoring on one clip would choose a parameter that makes the bar pass, which is what the pre-fixed drift bound and language scope exist to prevent -- the discipline has to apply to calibration too or it is theatre."
   ],
   "languages": {
     "en": {
       "voice": "Adam",
       "provider": "lemonfox",
       "text": "Dr. Chen published the results in 1984. Section 3 of the report covers pages 47 to 52, and the sample size was 1,250 participants.",
-      "expect_hard": ["Dr.", "1984", "3", "47", "52", "1,250"]
+      "expect_hard": [
+        "Dr.",
+        "1984",
+        "3",
+        "47",
+        "52",
+        "1,250"
+      ]
     },
     "es": {
-      "voice": "Enceladus",
-      "provider": "gemini",
+      "voice": "fish-es-4",
+      "provider": "fish",
       "text": "La Dra. Herrera publicó los resultados en 1984. La sección 3 del informe abarca las páginas 47 a 52, con 1.250 participantes.",
-      "expect_hard": ["Dra.", "1984", "3", "47", "52", "1.250"]
+      "expect_hard": [
+        "Dra.",
+        "1984",
+        "3",
+        "47",
+        "52",
+        "1.250"
+      ],
+      "reference_id": "bfed5c0810a347dbb62e8ccce7f59c48"
     },
     "fr": {
-      "voice": "Enceladus",
-      "provider": "gemini",
+      "voice": "Robert",
+      "provider": "fish",
       "text": "Le Dr Chen a publié les résultats en 1984. La section 3 du rapport couvre les pages 47 à 52, avec 1 250 participants.",
-      "expect_hard": ["Dr", "1984", "3", "47", "52", "1 250"]
+      "expect_hard": [
+        "Dr",
+        "1984",
+        "3",
+        "47",
+        "52",
+        "1 250"
+      ],
+      "reference_id": "a5d7dcbb81b4472ea0e240af3edaae7d"
     }
   },
   "_out_of_scope": {
     "ht": "Removed from scope 2026-08-08 (docs/architecture/0005). Kept as a NOTE, not a fixture: if ht is ever restored, this file is where its fixture goes, and the pass bar must be measured before the routing row is re-added, not after."
+  },
+  "holdout": {
+    "en": {
+      "provider": "lemonfox",
+      "voice": "Adam",
+      "text": "The committee met on March 14th to review 8 proposals. Prof. Adams noted that costs rose by 12 percent since 2019, reaching 3,400 euros per unit."
+    },
+    "es": {
+      "provider": "fish",
+      "voice": "Narrador v2",
+      "reference_id": "35199d5438854f5d9157c500479ab684",
+      "text": "El comite se reunio el 14 de marzo para revisar 8 propuestas. El Prof. Adams señalo que los costos subieron un 12 por ciento desde 2019, alcanzando 3.400 euros por unidad."
+    },
+    "fr": {
+      "provider": "fish",
+      "voice": "Robert",
+      "reference_id": "a5d7dcbb81b4472ea0e240af3edaae7d",
+      "text": "Le comite s'est reuni le 14 mars pour examiner 8 propositions. Le Prof. Adams a note que les couts ont augmente de 12 pour cent depuis 2019, atteignant 3 400 euros par unite."
+    }
   }
 }

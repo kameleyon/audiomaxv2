@@ -24,7 +24,7 @@
  * EXIT    0 clean · 1 findings · 2 not applicable (private docs absent)
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
 const DOCS = {
@@ -49,6 +49,14 @@ const DOCS = {
 };
 const PRIVATE = new Set(['spec', 'roadmap']);   // gitignored by owner decision
 const CURRENT_REVISION = 19;
+
+// J22-M5 / H26 — THE MEASUREMENT ARTIFACTS. Round 26 opened with: "The gate was
+// green — exit 0, self-test 54/54 — and every finding below is invisible to it,
+// because NO GUARD READS `aligner/spike-a/out/`. A headline can contradict its
+// own artifact and exit 0." Every check in this file read prose. The documents
+// quote numbers; the numbers live here; nothing compared them.
+const ARTIFACT_DIR = 'aligner/spike-a/out';
+const FIXTURES = 'aligner/spike-a/fixtures.json';
 // Counted from disk, not hand-maintained — a pinned literal is how the v7
 // version guard came to sit green over its own defect (N7-C9).
 const ROUNDS_ON_DISK = existsSync('resources/audits')
@@ -63,6 +71,50 @@ const section = (t, from, to) => {
   const rest = t.slice(s + 1).search(to);
   return rest < 0 ? t.slice(s) : t.slice(s, s + 1 + rest);
 };
+
+// Every JSON in the artifact directory, with its mtime, plus every key that
+// appears anywhere in it at any depth. `keys` is what lets a document's claim
+// that SPIKE A "returns" a metric be checked against a file that returns it.
+function loadArtifacts() {
+  const out = { files: {}, keys: new Set(), audioMtime: 0, jsonMtime: Infinity, present: false };
+  if (!existsSync(ARTIFACT_DIR)) return out;
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) { out.keys.add(k); walk(x); }
+    }
+  };
+  for (const f of readdirSync(ARTIFACT_DIR)) {
+    const p = `${ARTIFACT_DIR}/${f}`;
+    const mt = statSync(p).mtimeMs;
+    if (f.endsWith('.wav')) { out.audioMtime = Math.max(out.audioMtime, mt); continue; }
+    if (!f.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(p, 'utf8'));
+      out.files[f] = { data, mtime: mt };
+      out.present = true;
+      out.jsonMtime = Math.min(out.jsonMtime, mt);
+      walk(data);
+    } catch { /* a malformed artifact is caught by ART-PARSE below */ }
+  }
+  return out;
+}
+
+// Collect every numeric value stored under a given key, at any depth.
+function artifactValues(art, key) {
+  const found = new Set();
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === 'object') {
+      for (const [k, x] of Object.entries(v)) {
+        if (k === key && typeof x === 'number') found.add(Number(x.toFixed(1)));
+        walk(x);
+      }
+    }
+  };
+  for (const f of Object.values(art.files)) walk(f.data);
+  return found;
+}
 
 // ── Prose regressions ────────────────────────────────────────────────────
 // One per finding that recurred AFTER being reported fixed. `mutate` restores
@@ -235,6 +287,36 @@ const INVARIANTS = [
   { id: 'INV-OFFSETS', doc: 'spec', re: /len\(block_start_offsets\)/,
     why: 'without the length invariant nothing can be announced at a position',
     mutate: (t) => t.replace(/len\(block_start_offsets\)/, 'len(offsets)') },
+  // ── J22-M5 — THE BLIND REGION ────────────────────────────────────────
+  // "35 of 38 checks target two files. ZERO checks target the five ADRs, the
+  // glossary, CONTRIBUTING.md or CODEOWNERS — and Halo found four Criticals in
+  // exactly that blind region while the gate exited 0." DOCS has read those
+  // files since round 20; no check has ever asserted anything about them, so
+  // reading them bought nothing. These are the first.
+  { id: 'INV-CO-DEFAULT', doc: 'codeowners',
+    // GitHub CODEOWNERS resolves LAST MATCHING RULE WINS. So the danger is not
+    // deletion, it is APPENDING `* SomeoneElse` at the bottom -- which silently
+    // takes the commit gate away from Jury for EVERY path including this file,
+    // and every specific rule above it. Exactly J22-M6's defeat-by-addition
+    // shape, in the file that assigns the reviewers. The guard therefore asserts
+    // the catch-all is the FIRST rule and the ONLY one.
+    re: /^\*\s+Jury\b/m,
+    why: 'CODEOWNERS is last-match-wins, so the `*` default must be the first and only catch-all and must name Jury. A second `*` rule appended below re-owns every path in the file, including CLAUDE.md and this gate',
+    mutate: (t) => t.replace(/^\*\s+Jury\b/m, '# * Jury') },
+  { id: 'INV-CO-GATE', doc: 'codeowners', re: /^\/tools\/doc-check\.mjs\s+\S/m,
+    why: 'the gate tool must have a named reviewer. Weakening a check to make a document pass is the failure this tool exists to prevent, and an unowned path is one nobody is required to look at',
+    mutate: (t) => t.replace(/^\/tools\/doc-check\.mjs.*\n/m, '') },
+  { id: 'INV-GLOSSARY-BAR', doc: 'glossary',
+    re: /`matched_within_drift_pct >= 95`[^.]{0,80}`p95_abs_error_ms <= 300`/,
+    why: 'the glossary is where a newcomer learns what the bar IS. Both halves must be stated: a bar quoted as a match rate with no timing half is the H21-C3 defect, in which DRIFT_MS was defined and never applied',
+    mutate: (t) => t.replace(/`matched_within_drift_pct >= 95` and `p95_abs_error_ms <= 300`/,
+      '`matched_within_drift_pct >= 95`') },
+  { id: 'INV-ADR2-OBSERVE', doc: 'adr2', re: /`hallucination_rate`/,
+    why: 'ADR-0002 is the decision record for OBSERVE-DO-NOT-PREDICT. hallucination_rate is the only metric that can see an invented token — a failure prediction could not produce and observation can — so an ADR that drops it no longer records the risk its own decision introduced (H26 "do not retire it")',
+    mutate: (t) => t.replace(/`hallucination_rate`/g, '`token_error_rate`') },
+  { id: 'INV-CONTRIB-GATE', doc: 'contributing', re: /`FAIL`[^|]*\|\s*Any open Blocker or Critical\s*\|\s*\*\*Blocked\*\*/,
+    why: 'CONTRIBUTING is the only place a contributor reads the commit gate before running it. The FAIL row is the half that blocks; a table listing only the permissive verdicts is a gate that never closes',
+    mutate: (t) => t.replace(/^\|\s*`FAIL`.*\n/m, '') },
 ];
 
 const STRUCTURAL = [
@@ -265,11 +347,90 @@ const CONTROLS = [
     note: 'governs displayed text only, never synthesized speech' },
 ];
 
+// Read once at startup. `runChecks` takes an override so --self-test can run the
+// shipped artifact guards over a synthetic artifact set.
+const ARTIFACTS = loadArtifacts();
+
+// ── The self-test specimens, as DATA ─────────────────────────────────────
+// They used to be a run of `trial(...)` calls inside the --self-test branch, so
+// their number was knowable only by running it. CONTRIBUTING.md, README.md and
+// the roadmap all state that number, and nothing checked them; [SD-SELFTEST]
+// below can only exist because the count is computable here.
+//
+// Each entry is [id, doc, mutate] and mutates the LIVE document. `opts` entries
+// instead run the shipped checks over injected non-document state, which is the
+// only way to falsify a guard that reads git or the artifact directory.
+const EXTRA_TRIALS = [
+  ['PROD', 'roadmap', (t) => t.replace(/utter\(/g, 'utterance of (')],
+  ['MIG-H', 'roadmap', (t) => t.split('disclosure_fingerprint').join('~~X~~')],
+  ['REV', 'spec', (t) => t.replace(/### 7\.2 `segments`/, '### 7.2 `segments`\n\n`bogus_spurious_column` ·')],
+  ['SD-REV', 'spec', (t) => t.replace(/\*\*Revision:\*\* v\d+/, '**Revision:** v3')],
+  ['SD-COUNT', 'spec', (t) => t.replace(/`node tools\/doc-check\.mjs`/, '99 prose-regression guards via `node tools/doc-check.mjs`')],
+  ['CTL-ui_locale', 'spec', (t) => t.split('ui_locale').join('~~X~~')],
+  // Move a column onto the wrong table — Jury's N8-C2 demonstration, as a test.
+  ['PLACE', 'spec', (t) => t.replace(/(### 7\.2 `segments`[\s\S]{0,400}?`display_byte_count`)/, '$1 · `align_status`')],
+  // ── Halo's seven acceptance mutations, round 9, installed as trials in
+  // round 10 after three rounds of being read rather than executed. Halo:
+  // "A specimen that lives in an audit report protects nothing; a specimen
+  // that lives in results.push cannot be forgotten and fails the build."
+  ['S2R', 'roadmap', (t) => t.split('`chapter_announcement`,').join('')],                 // 1
+  ['S2R', 'roadmap', (t) => t.split('align_blocker').join('~~X~~')],                      // 2a
+  ['COL', 'spec', (t) => t.replace(/ · \*\*`align_blocker`\*\*/, '')],                    // 2b
+  ['KIND', 'spec', (t) => t.replace(/"kind": "dropped"/, '"kind": "skipped"')],           // 3
+  ['PHASE', 'roadmap', (t) => t.replace(/NFC on `user_lexicon\.surface_form`/, 'NFC on the lexicon key')], // 4
+  ['S2R', 'roadmap', (t) => t.replace(/, \*\*`table_cell`\*\*/, '')],                     // 5
+  ['PHASE', 'roadmap', (t) => t.replace(/skip_policy, content_narration,/, 'skip_policy,')], // 6
+  ['COL', 'spec', (t) => t.replace(/ · \*\*`disclosure_fingerprint`\*\*/, '')],           // 7
+  // Faithful FWD specimen: delete a declared interface field from §7 entirely.
+  ['FWD', 'spec', (t) => {
+    const i = t.search(/^#+\s*7\.\s*Data model/m);
+    return t.slice(0, i) + t.slice(i).split('`heading_level`').join('~~X~~');
+  }],
+  // ── J22-M6 — DEFEAT BY ADDITION. Append a SECOND catch-all row beneath the
+  // no-route row. INV-NO-ROUTE still passes (the row it looks for is untouched);
+  // NO-ROUTE-TOTAL is the guard that has to see it.
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.[^\n]*\n)/,
+    '$1| Everything else | Google / Gemini TTS |\n')],
+  // A document stating a --self-test result that is not the one the harness
+  // declares. Run against README.md rather than CONTRIBUTING.md so the trial
+  // stays live while CONTRIBUTING's own count is open.
+  ['SD-SELFTEST', 'readme', (t) => `${t}\n\nself-test reports 3 passed, 0 failed.\n`],
+  // CODEOWNERS defeat by addition: a bare catch-all appended at the bottom.
+  // INV-CO-DEFAULT survives this mutation — it was demonstrated surviving it —
+  // which is precisely why CO-DEFAULT exists.
+  ['CO-DEFAULT', 'codeowners', (t) => `${t}\n*                               Nobody\n`],
+  // ── J22-M5 / H26 — the artifact guards, falsified against injected artifacts.
+  ['ART-FIGURE', null, null, {
+    // A headline figure the artifact does not contain (H26-C1's exact shape).
+    artifacts: { present: true, keys: new Set(['matched_within_drift_pct']), audioMtime: 0,
+      files: { 'x.json': { data: [{ matched_within_drift_pct: 11.1 }], mtime: 1 } } },
+  }],
+  ['ART-ABSENT', null, null, {
+    artifacts: { present: false, keys: new Set(), files: {}, audioMtime: 0 },
+  }],
+  ['ART-METRIC', null, null, {
+    // Present but returning nothing the roadmap asks for — H26-M6 exactly.
+    artifacts: { present: true, keys: new Set(['unrelated']), audioMtime: 0,
+      files: { 'x.json': { data: [{ unrelated: 1 }], mtime: 1 } } },
+  }],
+  ['ART-STALE', null, null, {
+    // An artifact written BEFORE the audio it scores (H26-C1's second half).
+    artifacts: { present: true, keys: new Set(['matched_within_drift_pct']), audioMtime: 9e12,
+      files: { 'x.json': { data: [{ matched_within_drift_pct: 62.5 }], mtime: 1 } } },
+  }],
+  // ── J22-M6, second half — a brand-new top-level directory, which the old
+  // allowlist could not see on the day it was created.
+  ['STAGED', null, null, { injectedGitFiles: ['worker/src/queue/render.ts'] }],
+];
+const TRIAL_COUNT = BANNED.length + INVARIANTS.length + STRUCTURAL.length + EXTRA_TRIALS.length;
+
 // ── The checks. One function, so the harness runs exactly what ships. ─────
-function runChecks(src) {
+function runChecks(src, opts = {}) {
   const out = [];
   const add = (severity, check, doc, line, message) =>
     out.push({ severity, check, doc, line, message, id: message.match(/\[([\w-]+)\]/)?.[1] });
+  const art = opts.artifacts ?? ARTIFACTS;
 
   const schemaText = section(src.spec, /^#+\s*7\.\s*Data model/m, /^#+\s*8\./m);
   const phase1 = section(src.roadmap, /^##\s*Phase 1/m, /^##\s*Phase 2/m);
@@ -662,6 +823,148 @@ function runChecks(src) {
     }
   }
 
+  // 6b. ROUTING TOTALITY — INV-NO-ROUTE'S MISSING HALF (J22-M6).
+  //
+  // INV-NO-ROUTE asserts the no-route row is PRESENT. Jury: "it is defeatable by
+  // ADDITION. Append a second catch-all row beneath it and the §3.5 routing
+  // table is total again, `blocked_language_unsupported` loses its raiser,
+  // `speech_blocker` returns 0 for every document -- and the gate exits 0."
+  // A presence guard cannot see an added row. This is the inversion: EVERY
+  // catch-all condition in §3.5 must refuse, not route. One named exclusion
+  // (the row that refuses), everything else flagged.
+  const routing = section(src.spec, /^###\s*3\.5\s/m, /^###\s*3\.6|^##\s*4\./m);
+  // ANCHORED at the start of the condition cell. A catch-all is a row whose
+  // condition places no constraint at all; "Cloned voice, any language" places
+  // one (the voice) and is not a catch-all, which an unanchored pattern cannot
+  // tell -- it flagged that row on the first run of this guard.
+  const CATCHALL = /^[*\s]*(any other|every other|all other|everything else|anything else|otherwise|unlisted|not listed|default|all remaining|any remaining|remaining|all languages?|any languages?|\*)\b/i;
+  let catchAllRows = 0;
+  for (const raw of routing.split('\n')) {
+    if (!/^\s*\|/.test(raw) || /^\s*\|[\s:|-]*\|?\s*$/.test(raw)) continue;
+    const cells = raw.split('|').slice(1, -1).map((c) => c.trim());
+    if (!cells.length || !CATCHALL.test(cells[0])) continue;
+    catchAllRows += 1;
+    if (!/NO ROUTE/i.test(raw)) {
+      add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(raw)),
+        `[NO-ROUTE-TOTAL] §3.5 has a catch-all row "${cells[0].slice(0, 40)}" that ROUTES ` +
+        `instead of refusing. The routing table must stay NON-TOTAL: a second catch-all ` +
+        `beneath the no-route row makes routing total over languages again, so ` +
+        `blocked_language_unsupported has no reachable raiser and §8.2's speech_blocker ` +
+        `reports 0 for every document. INV-NO-ROUTE checks the row is PRESENT; this checks ` +
+        `nothing was added under it (J22-M6).`);
+    }
+  }
+  if (routing && catchAllRows !== 1) {
+    add('CRITICAL', 'routing-totality', 'spec', 0,
+      `[NO-ROUTE-TOTAL] §3.5 has ${catchAllRows} catch-all rows; exactly one is required ` +
+      `and it must be the refusal. Zero means routing is total by omission; two or more ` +
+      `means the second one decides.`);
+  }
+
+  // 6c. CODEOWNERS TOTALITY — the same defeat-by-addition shape, in the file
+  // that decides who reviews. GitHub resolves CODEOWNERS by LAST MATCHING RULE,
+  // so appending `*  Nobody` at the bottom silently re-owns every path above it
+  // -- CLAUDE.md, the audit trail, this gate -- while `*  Jury` is still there
+  // for a presence guard to find. INV-CO-DEFAULT checks the rule EXISTS; this
+  // checks nothing was added under it. Demonstrated: the first version of
+  // INV-CO-DEFAULT did not fire on an appended `*  Nobody`, which is the whole
+  // finding restated inside its own repair.
+  const coRules = (src.codeowners || '').split('\n')
+    .map((l, i) => [l, i])
+    .filter(([l]) => l.trim() && !l.trim().startsWith('#'))
+    .map(([l, i]) => [l.trim().split(/\s+/), i]);
+  const coCatchAll = coRules.filter(([parts]) => parts[0] === '*');
+  if (coRules.length) {
+    if (coCatchAll.length !== 1) {
+      add('CRITICAL', 'codeowners-totality', 'codeowners', (coCatchAll[1]?.[1] ?? 0) + 1,
+        `[CO-DEFAULT] ${coCatchAll.length} catch-all \`*\` rules; exactly one is required. ` +
+        `CODEOWNERS is LAST-MATCH-WINS, so a second one re-owns every path above it — ` +
+        `including CLAUDE.md, resources/audits/ and this gate — without touching the rule a ` +
+        `presence check looks for.`);
+    } else if (coCatchAll[0][1] !== coRules[0][1]) {
+      add('CRITICAL', 'codeowners-totality', 'codeowners', coCatchAll[0][1] + 1,
+        `[CO-DEFAULT] the catch-all \`*\` rule is not the FIRST rule. Under last-match-wins ` +
+        `every specific rule above it is dead.`);
+    } else if (!coCatchAll[0][0].includes('Jury')) {
+      add('CRITICAL', 'codeowners-totality', 'codeowners', coCatchAll[0][1] + 1,
+        `[CO-DEFAULT] the catch-all \`*\` rule does not name Jury. CLAUDE.md gives Jury the ` +
+        `commit gate for everything; no path is exempt.`);
+    }
+  }
+
+  // 9. THE MEASUREMENT ARTIFACTS (J22-M5 / H26). No guard read aligner/spike-a/out/.
+  if (!art.present) {
+    add('CRITICAL', 'artifact', 'roadmap', 0,
+      `[ART-ABSENT] no parsable JSON in ${ARTIFACT_DIR}. Every artifact check below is ` +
+      `vacuous, and a vacuous check that reports nothing is how this gate sat green over ` +
+      `two Blockers in round 26.`);
+  } else {
+    // (a) Every metric the roadmap says SPIKE A RETURNS must be a key in a file
+    // it returned. H26-M6: `compute_cost_per_audio_hour_usd` was required by the
+    // roadmap and appeared in NO file in out/ -- while the cost claim built on it
+    // sat in the headline.
+    const spikeBlock = section(src.roadmap, /Return these \w+ numbers per language/m,
+      /\*\*Proposed bar/m);
+    const required = [...new Set([...spikeBlock.matchAll(/`([a-z][a-z0-9_]*(?:_ms|_pct|_rate|_usd))`/g)]
+      .map((m) => m[1]))];
+    if (required.length < 4) {
+      add('CRITICAL', 'artifact', 'roadmap', 0,
+        `[ART-METRIC] harvested only ${required.length} required metric names from the SPIKE A ` +
+        `block; expected at least 4. The parse returned little or nothing, so this check is ` +
+        `vacuous — suspect a renamed heading.`);
+    }
+    for (const key of required) {
+      if (!art.keys.has(key)) {
+        add('CRITICAL', 'artifact', 'roadmap', 0,
+          `[ART-METRIC] the roadmap requires SPIKE A to return \`${key}\` and NO file in ` +
+          `${ARTIFACT_DIR} contains that key. A metric required in prose and emitted by nothing ` +
+          `is a claim, not a measurement (H26-M6).`);
+      }
+    }
+    // (b) A figure attributed to an artifact metric must be IN the artifact.
+    // H26-C1: "Match rate 100% all three languages" was contradicted by the only
+    // file computing it, and the gate exited 0 because no guard opened the file.
+    const TRACKED = ['matched_within_drift_pct', 'hallucination_rate_pct', 'median_drift_ms',
+      'p95_drift_ms', 'median_abs_error_ms', 'p95_abs_error_ms'];
+    for (const [key, txt] of Object.entries(src)) {
+      for (const metric of TRACKED) {
+        const vals = artifactValues(art, metric);
+        if (!vals.size) continue;
+        // Also accept the labelled upper bound, which is the same quantity.
+        for (const extra of artifactValues(art, `${metric}_endpoints_credited`)) vals.add(extra);
+        for (const m of txt.matchAll(new RegExp(`\`?${metric}\`?([\\s\\S]{0,120})`, 'g'))) {
+          // `§` and `#` are excluded from the lookbehind: §6.1 and §8.2 are
+          // section references, not measurements, and the first run of this
+          // guard reported §6.1 as a contradicted figure.
+          for (const n of m[1].matchAll(/(?<![\w.§#])(\d{1,3}\.\d)(?![\d])/g)) {
+            const v = Number(n[1]);
+            if (v === 95 || v === 250 || v === 300) continue;   // the bars, not measurements
+            if (vals.has(v)) continue;
+            add('MAJOR', 'artifact', key, lineOf(txt, m.index),
+              `[ART-FIGURE] quotes ${v} for \`${metric}\`; ${ARTIFACT_DIR} reports ` +
+              `{${[...vals].sort((a, b) => a - b).join(', ')}}. A headline that contradicts ` +
+              `its own artifact is H26-C1; re-run the harness or correct the figure, and say ` +
+              `which.`);
+          }
+        }
+      }
+    }
+    // (c) An artifact must not PREDATE the audio it scores. Round 26 found
+    // out/spike-a-results.json older than es.wav and fr.wav at every observation
+    // -- so the headline was credited against audio the run never heard, and the
+    // roadmap notes it "is a property of the harness, not one bad run".
+    if (art.audioMtime) {
+      for (const [f, v] of Object.entries(art.files)) {
+        if (v.mtime < art.audioMtime) {
+          add('MAJOR', 'artifact', 'roadmap', 0,
+            `[ART-STALE] ${ARTIFACT_DIR}/${f} was written BEFORE the newest audio in the same ` +
+            `directory (${new Date(v.mtime).toISOString()} < ${new Date(art.audioMtime).toISOString()}). ` +
+            `It cannot describe that audio. Re-run the step that writes it (H26-C1).`);
+        }
+      }
+    }
+  }
+
   // 8. STAGED STATE (J22-C1). The gate reads the WORKING TREE; `git commit`
   // writes the INDEX. Nothing reconciled them, so a green gate and a Jury pass
   // could both be earned on files the commit would not carry -- and were: three
@@ -674,23 +977,34 @@ function runChecks(src) {
   // that exists to check what the artifacts claim about this tool. It IS a hard gate,
   // and that is the right call: a pass earned on unstaged files is not a pass. The
   // comment now matches the code.
+  // J22-M6, second half. This filter WAS an allowlist -- `tools/`, `docs/`,
+  // `resources/`, `aligner/`, four literal filenames -- and it had been extended
+  // twice, each time by a finding that named a file it could not see (J23-M4
+  // spike-a-results.json, J24-M7 the gate tool itself). Jury: "it is a
+  // whitelist, so a NEW TOP-LEVEL DIRECTORY is invisible the day it is created,
+  // which is the day Phase 0 starts." `worker/`, `supabase/`, `openapi/`,
+  // `web/`, `apps/mobile/`, `i18n/`, `tests/`, `legal/` are all named in
+  // CODEOWNERS and none of them existed in the list.
+  //
+  // INVERTED. Everything is gate-relevant except a named exclusion set of build
+  // and cache output. A new directory is covered on the day it is created, and
+  // adding an exclusion is a visible edit to a named list rather than a silent
+  // omission from an unnamed one.
+  const GATE_IRRELEVANT = [
+    /(^|\/)node_modules\//, /(^|\/)__pycache__\//, /\.py[cod]$/, /(^|\/)\.venv\//,
+    /(^|\/)venv\//, /^\.turbo\//, /^\.next\//, /^coverage\//, /^dist\//, /^build\//,
+    /\.tsbuildinfo$/, /(^|\/)\.DS_Store$/, /(^|\/)Thumbs\.db$/, /\.log$/,
+  ];
+  const GATE_RELEVANT = (f) => Boolean(f) && !GATE_IRRELEVANT.some((re) => re.test(f));
   try {
-    const dirty = execSync('git diff --name-only', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    const git = (cmd) => execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
       .split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean);
-    const GATE_RELEVANT = (f) => Object.values(DOCS).includes(f)
-      || f.startsWith('resources/audits/')
-      // J23-M4: spike-a-results.json was one of the three blobs proved unstaged in
-      // round 22 and this filter could not see it -- the check missed a third of the
-      // Critical it was written for.
-      || f.startsWith('aligner/')
-      || f === 'CODEOWNERS' || f === '.gitignore' || f === '.gitattributes'
-      // J24-M7: this allowlist did not contain the file it lives in. An unstaged
-      // edit to the gate tool -- the file carrying every guard repair -- was
-      // invisible to the check built to catch unstaged edits. Same self-exemption
-      // shape as the tool never reading itself in DOCS.
-      || f.startsWith('tools/') || f.startsWith('docs/') || f.startsWith('resources/');
-    const untracked = execSync('git ls-files --others --exclude-standard', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
-      .split(String.fromCharCode(10)).map((x) => x.trim()).filter(Boolean).filter(GATE_RELEVANT);
+    // `injectedGitFiles` exists so --self-test can run the SHIPPED predicate over
+    // a synthetic path. A git-state check cannot be exercised by mutating a
+    // document, and a guard with no executable falsification is decoration.
+    const dirty = opts.injectedGitFiles ?? git('git diff --name-only');
+    const untracked = (opts.injectedGitFiles ? [] : git('git ls-files --others --exclude-standard'))
+      .filter(GATE_RELEVANT);
     const tracked = dirty.filter(GATE_RELEVANT).concat(untracked);
     if (tracked.length) {
       // J23-m1: attribute to the DOCS key when the first dirty path is one, so the
@@ -782,8 +1096,14 @@ function runChecks(src) {
     // MIS-citation, and that is exactly what the last run produced -- three ADRs
     // now cite -round19.md for findings recorded in -round18.md. Only documents
     // that MAINTAIN a roster are held to completeness.
+    // J25-M3 / J23-m2 -- SCOPING IS A GUARDED BLOCK, NOT A `continue`.
+    // This was `if (!ROSTER_KEEPERS.has(key)) continue;` in the middle of the
+    // per-document loop, so EVERY check appended after it was silently disabled
+    // for 8 of the 12 documents -- and the next author to add a check at the
+    // bottom of this loop would have had no way to know. A `continue` scopes one
+    // check by skipping all of them; a block scopes exactly the check it wraps.
     const ROSTER_KEEPERS = new Set(['spec', 'roadmap', 'readme', 'adrIndex']);
-    if (!ROSTER_KEEPERS.has(key)) continue;
+    if (ROSTER_KEEPERS.has(key)) {
     // J25-M3 -- this guard REWARDED the defect it was narrowed to stop. Demanding
     // that the highest cited record reach ROUNDS_ON_DISK makes the cheapest fix a
     // MIS-citation, and it produced three in a row on one sentence (round21 ->
@@ -798,6 +1118,19 @@ function runChecks(src) {
     if (named.length && Math.max(...named) < ROUNDS_ON_DISK) {
       add('MAJOR', 'self-description', key, lineOf(txt, txt.indexOf('-round')),
         `[SD-ROSTER] filename roster stops at -round${Math.max(...named)}.md; ${ROUNDS_ON_DISK} records exist`);
+    }
+    }   // end ROSTER_KEEPERS block — checks below run for EVERY document
+
+    // A document claiming a --self-test result must claim the real one. The
+    // count is stated in three artifacts and was checked by nothing, so the
+    // first guard added or removed made all three wrong and the gate silent.
+    for (const m of txt.matchAll(/(\d+)\s+passed,\s*\d+\s+failed/g)) {
+      if (Number(m[1]) !== TRIAL_COUNT) {
+        add('MAJOR', 'self-description', key, lineOf(txt, m.index),
+          `[SD-SELFTEST] claims --self-test reports ${m[1]} passed; the harness declares ` +
+          `${TRIAL_COUNT} trials. Guard counts move when guards are added; this is the ` +
+          `check that says so instead of leaving three documents wrong.`);
+      }
     }
   }
   // Enum-count claims must match the declared union.
@@ -851,21 +1184,50 @@ if (missing.length) {
 if (process.argv.includes('--self-test')) {
   const results = [];
   const baseline = runChecks(src);
+  // The abort used to be GLOBAL: any baseline finding and the whole suite
+  // refused to run. The stated reason — "baseline is not clean, so red/green is
+  // meaningless" — is true only of a guard that is ALREADY RED, because for that
+  // one guard the mutation proves nothing. It is not true of the other sixty.
+  //
+  // A global abort therefore makes one open finding blind the entire suite,
+  // which is the same shape as the `continue` in J25-M3: a scoping decision that
+  // silently disables everything downstream of it. Scoped PER ID instead: a
+  // trial whose id is already red at baseline is a FAILURE (its mutation is
+  // uninformative), every other trial runs, and the baseline findings are
+  // printed at the top where they cannot be mistaken for a clean gate.
+  // Keyed on id AND document. [SD-SELFTEST] open on CONTRIBUTING.md says nothing
+  // about whether the same guard fires on README.md, and treating it as if it
+  // did would disable a live trial for a document with no defect.
+  const baselineKeys = new Set(baseline.map((f) => `${f.id}@${f.doc}`));
+  const baselineIds = new Set(baseline.map((f) => f.id));
   if (baseline.length) {
-    console.log('self-test: ABORTED — baseline is not clean, so red/green is meaningless.');
-    console.log('Fix the findings from `node tools/doc-check.mjs` first.');
-    process.exit(1);
+    console.log(`self-test: BASELINE IS NOT CLEAN — ${baseline.length} open finding(s).`);
+    console.log('THE GATE DOES NOT PASS. `node tools/doc-check.mjs` exits 1. Open:');
+    for (const f of baseline) console.log(`  ${f.severity.padEnd(8)} [${f.id}] ${DOCS[f.doc]}`);
+    console.log('Trials whose own id is already red below are reported as FAIL: for those,');
+    console.log('the mutation proves nothing. The rest are still meaningful.\n');
   }
 
-  const trial = (id, doc, mutate) => {
-    const mutated = { ...src, [doc]: mutate(src[doc]) };
-    if (mutated[doc] === src[doc]) {
-      results.push([false, `${id}: MUTATION WAS A NO-OP — the specimen no longer matches the document`]);
+  const trial = (id, doc, mutate, opts) => {
+    if (doc ? baselineKeys.has(`${id}@${doc}`) : baselineIds.has(id)) {
+      results.push([false, `${id}: ALREADY RED at baseline — a mutation cannot show this guard ` +
+        `firing on its own defect when it is already firing. Fix the open finding.`]);
+      return;
+    }
+    let mutated = src;
+    if (doc) {
+      mutated = { ...src, [doc]: mutate(src[doc]) };
+      if (mutated[doc] === src[doc]) {
+        results.push([false, `${id}: MUTATION WAS A NO-OP — the specimen no longer matches the document`]);
+        return;
+      }
+    } else if (!opts) {
+      results.push([false, `${id}: neither a document mutation nor injected state — nothing was falsified`]);
       return;
     }
     // Exact ID only. `f.message.includes(id)` let `REV` pass on an `[SD-REV]`
     // message — a substring false-green Jury demonstrated (N8-M6).
-    const fired = runChecks(mutated).some((f) => f.id === id);
+    const fired = runChecks(mutated, opts ?? {}).some((f) => f.id === id);
     results.push([fired, fired ? id : `${id}: guard did NOT fire on its own defect`]);
   };
 
@@ -881,49 +1243,43 @@ if (process.argv.includes('--self-test')) {
         i === 0 ? part : acc + (++seen < g.min ? g.need : '~~X~~') + part, '');
     });
   }
-  trial('PROD', 'roadmap', (t) => t.replace(/utter\(/g, 'utterance of ('));
-  trial('MIG-H', 'roadmap', (t) => t.split('disclosure_fingerprint').join('~~X~~'));
-  trial('REV', 'spec', (t) => t.replace(/### 7\.2 `segments`/, '### 7.2 `segments`\n\n`bogus_spurious_column` ·'));
-  trial('SD-REV', 'spec', (t) => t.replace(/\*\*Revision:\*\* v\d+/, '**Revision:** v3'));
-  trial('SD-COUNT', 'spec', (t) => t.replace(/`node tools\/doc-check\.mjs`/, '99 prose-regression guards via `node tools/doc-check.mjs`'));
-  trial('CTL-ui_locale', 'spec', (t) => t.split('ui_locale').join('~~X~~'));
-  // Faithful FWD specimen: delete a declared interface field from §7 entirely.
-  // The first attempt renamed a table row, which exercises MIG-T instead — the
-  // harness reported it as a dead guard, correctly. A mutation that does not
-  // reproduce the defect proves nothing about the guard for it.
-  // Move a column onto the wrong table — Jury's N8-C2 demonstration, as a test.
-  trial('PLACE', 'spec', (t) =>
-    t.replace(/(### 7\.2 `segments`[\s\S]{0,400}?`display_byte_count`)/,
-      '$1 · `align_status`'));
-  // ── Halo's seven acceptance mutations, round 9, installed as trials in
-  // round 10 after three rounds of being read rather than executed. Halo:
-  // "A specimen that lives in an audit report protects nothing; a specimen
-  // that lives in results.push cannot be forgotten and fails the build."
-  trial('S2R', 'roadmap', (t) => t.split('`chapter_announcement`,').join(''));           // 1
-  trial('S2R', 'roadmap', (t) => t.split('align_blocker').join('~~X~~'));                // 2a
-  trial('COL', 'spec', (t) => t.replace(/ · \*\*`align_blocker`\*\*/, ''));              // 2b
-  trial('KIND', 'spec', (t) => t.replace(/"kind": "dropped"/, '"kind": "skipped"'));     // 3
-  trial('PHASE', 'roadmap', (t) => t.replace(/NFC on `user_lexicon\.surface_form`/, 'NFC on the lexicon key')); // 4
-  trial('S2R', 'roadmap', (t) => t.replace(/, \*\*`table_cell`\*\*/, ''));               // 5
-  trial('PHASE', 'roadmap', (t) => t.replace(/skip_policy, content_narration,/, 'skip_policy,')); // 6
-  trial('COL', 'spec', (t) => t.replace(/ · \*\*`disclosure_fingerprint`\*\*/, ''));     // 7
+  for (const [id, doc, mutate, opts] of EXTRA_TRIALS) trial(id, doc, mutate, opts);
 
-  trial('FWD', 'spec', (t) => {
-    const i = t.search(/^#+\s*7\.\s*Data model/m);
-    return t.slice(0, i) + t.slice(i).split('`heading_level`').join('~~X~~');
-  });
+  if (results.length !== TRIAL_COUNT) {
+    results.push([false, `TRIAL-COUNT: ran ${results.length} trials, declared ${TRIAL_COUNT} — ` +
+      `[SD-SELFTEST] checks documents against the DECLARED number, so the two must agree`]);
+  }
 
   const failed = results.filter(([ok]) => !ok);
   console.log(`self-test: ${results.length - failed.length} passed, ${failed.length} failed`);
   console.log('  (each mutates the live document and runs the shipped checks)\n');
   for (const [, msg] of failed) console.log(`  FAIL  ${msg}`);
   if (!failed.length) {
-    // Honest coverage, not "every guard". Three consecutive rounds this tool
-    // was over-claimed in the sentence beside the number (N7-C7, N8-M10).
+    // Honest coverage, not "every guard". Three consecutive rounds this tool was
+    // over-claimed in the sentence beside the number (N7-C7, N8-M10) — and the
+    // hand-written list that replaced those claims had itself gone stale:
+    // SD-COUNT-AUDITS and SD-UNWRITTEN were added with no mutation and the
+    // sentence beside the number never learned about them. It is COMPUTED now.
+    // The file reads itself for bracketed-id literals at the head of a finding
+    // message, expands the ids the guard tables generate, and subtracts what the
+    // trials cover. A guard added tomorrow with no specimen names itself here,
+    // in the same run.
+    //
+    // Anchored on the opening quote of the message string. A backtick-only
+    // pattern found neither LOC-7 nor LOC-P1 (their messages are single-quoted)
+    // and DID find the word ID out of a prose comment — an over-claim and an
+    // under-claim in the same line, which is the reason this is computed.
     const covered = new Set(results.map(([, m]) => String(m).split(':')[0]));
+    const selfSrc = readFileSync(new URL(import.meta.url), 'utf8');
+    const known = new Set([
+      ...[...selfSrc.matchAll(/(?<=['"`])\[([A-Z][A-Z0-9_-]*)\]/g)].map((m) => m[1]),
+      ...BANNED.map((b) => b.id), ...INVARIANTS.map((i) => i.id), ...STRUCTURAL.map((g) => g.id),
+      ...CONTROLS.map((c) => `CTL-${c.name}`),
+    ]);
+    const unmutated = [...known].filter((id) => !covered.has(id)).sort();
     console.log(`  ${covered.size} check IDs have a mutation and all of them fire.`);
-    console.log('  NOT mutated: LOC-7, LOC-P1, MIG-T, SD-ROSTER, SD-ENUM, HARVEST, and');
-    console.log('  4 of 5 CTL-* chains. Those are verified by hand, not by this harness.');
+    console.log(`  NOT mutated (${unmutated.length}): ${unmutated.join(', ')}`);
+    console.log('  Those are verified by hand, not by this harness.');
   }
   process.exit(failed.length ? 1 : 0);
 }

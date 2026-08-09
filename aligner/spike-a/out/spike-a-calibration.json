@@ -1,0 +1,60 @@
+{
+  "calibration": {
+    "en": {
+      "shift_ms": 90,
+      "duration_scale": 1.45
+    },
+    "es": {
+      "shift_ms": 80,
+      "duration_scale": 1.4
+    },
+    "fr": {
+      "shift_ms": 60,
+      "duration_scale": 1.4
+    }
+  },
+  "holdout": [
+    {
+      "lang": "en",
+      "shift_ms": 90,
+      "duration_scale": 1.45,
+      "holdout_words": 25,
+      "uncalibrated_pct": 24.0,
+      "calibrated_pct": 88.0,
+      "median_overlap_pct": 64.0,
+      "passes_95_bar": false,
+      "fit_voice": "Adam",
+      "holdout_voice": "Adam",
+      "voice_confounded": false,
+      "_confound_note": "H26-M5. When fit_voice != holdout_voice the holdout varies TWO things at once, so it cannot separate 'the offset did not generalise to new text' from 'the offset did not generalise to this voice'. Voice is a measured word-sync variable (fixtures.json:19, a 12-point swing). This row is not evidence of generalisation."
+    },
+    {
+      "lang": "es",
+      "shift_ms": 80,
+      "duration_scale": 1.4,
+      "holdout_words": 23,
+      "uncalibrated_pct": 39.1,
+      "calibrated_pct": 87.0,
+      "median_overlap_pct": 71.4,
+      "passes_95_bar": false,
+      "fit_voice": "fish-es-4",
+      "holdout_voice": "Narrador v2",
+      "voice_confounded": true,
+      "_confound_note": "H26-M5. When fit_voice != holdout_voice the holdout varies TWO things at once, so it cannot separate 'the offset did not generalise to new text' from 'the offset did not generalise to this voice'. Voice is a measured word-sync variable (fixtures.json:19, a 12-point swing). This row is not evidence of generalisation."
+    },
+    {
+      "lang": "fr",
+      "shift_ms": 60,
+      "duration_scale": 1.4,
+      "holdout_words": 23,
+      "uncalibrated_pct": 34.8,
+      "calibrated_pct": 82.6,
+      "median_overlap_pct": 70.0,
+      "passes_95_bar": false,
+      "fit_voice": "Robert",
+      "holdout_voice": "Robert",
+      "voice_confounded": false,
+      "_confound_note": "H26-M5. When fit_voice != holdout_voice the holdout varies TWO things at once, so it cannot separate 'the offset did not generalise to new text' from 'the offset did not generalise to this voice'. Voice is a measured word-sync variable (fixtures.json:19, a 12-point swing). This row is not evidence of generalisation."
+    }
+  ]
+}

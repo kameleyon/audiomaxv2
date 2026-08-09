@@ -1,0 +1,26 @@
+{
+  "engine": "whisperx-wav2vec2",
+  "ran": false,
+  "reference": "lemonfox-asr",
+  "calibration": "none",
+  "results": [],
+  "failures": [
+    {
+      "stage": "import",
+      "error": "ModuleNotFoundError: Could not import module 'Wav2Vec2ForCTC'. Are this object's requirements defined correctly?",
+      "diagnosis": "transformers 5.x no longer exports Wav2Vec2ForCTC / Wav2Vec2Processor / Pipeline at the top level, and whisperx imports all three at module scope. WhisperX cannot execute on this interpreter.",
+      "remedy": "pin transformers<5 in a dedicated venv for the aligner sidecar. NOT done here: this Python install is shared with other projects on the host, and downgrading it globally to make one spike run is a change with a blast radius nobody asked for.",
+      "standing_in_for": "aligner/spike-a/fa.py -- torchaudio MMS_FA. Same mechanism (wav2vec2 CTC forced alignment over the audio), bundled with torchaudio, no transformers dependency. Its results are in out/spike-a-forced-alignment.json. WhisperX is the NAMED tool and it did not run; the MECHANISM the roadmap wanted measured was measured."
+    }
+  ],
+  "versions": {
+    "whisperx": "unavailable: AttributeError",
+    "transformers": "5.14.1",
+    "torch": "2.8.0+cpu",
+    "torchaudio": "2.8.0+cpu",
+    "numpy": "1.26.4",
+    "faster_whisper": "1.2.1"
+  },
+  "_note": "H26-m2. This file records whether the named deliverable EXECUTED. An empty results list with ran=false and a populated failures list is a report of non-execution, not a report of nothing. The previous artifact was `[]`, which is indistinguishable from 'measured nothing worth reporting', and no document said WhisperX had not run.",
+  "import_ok": false
+}

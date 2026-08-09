@@ -1,32 +1,56 @@
 [
   {
-    "lang": "en",
-    "provider": "lemonfox",
-    "voice": "Adam",
-    "chars": 130,
+    "path": "en-holdout.wav",
+    "bytes": 524446,
+    "sha256": "0d0321989e8bc38116854c3f925d678104323b04e003dafd2b58655c0dc68aa6",
+    "seconds": 10.93,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "en.wav",
     "bytes": 558046,
-    "audio_seconds": 11.63,
     "sha256": "8bb935d2c114502615130a61b0ba9fdafa9585fa092b52487dc5bf1422acccd5",
-    "path": "en.wav"
+    "seconds": 11.63,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false
   },
   {
-    "lang": "es",
-    "provider": "gemini",
-    "voice": "Enceladus",
-    "chars": 125,
-    "bytes": 616364,
-    "audio_seconds": 12.84,
-    "sha256": "7dca909dc7c34ba182c044582aebff17a69f15c8495d803da7d65d83a5fed73e",
-    "path": "es.wav"
+    "path": "es-holdout.wav",
+    "bytes": 933932,
+    "sha256": "930e5cb755a5916c0ce104f7c6ef17e4271a01a474be5529a8196f8871e625db",
+    "seconds": 10.59,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
   },
   {
-    "lang": "fr",
-    "provider": "gemini",
-    "voice": "Enceladus",
-    "chars": 117,
-    "bytes": 549164,
-    "audio_seconds": 11.44,
-    "sha256": "b5461e10f21f9811ff27dc4913c9240c9fe2fad71a66e855e7eb6184971fd61a",
-    "path": "fr.wav"
+    "path": "es.wav",
+    "bytes": 1028140,
+    "sha256": "619d0a49d3df9556f6333ea07b615e367c98c57acf481696f1ae6426dd5ae2df",
+    "seconds": 11.66,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-holdout.wav",
+    "bytes": 843820,
+    "sha256": "73ab87cbb2d267daf62ce7a56873a96ae18fb016ea0fcfda783482dc5980cd17",
+    "seconds": 9.57,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr.wav",
+    "bytes": 720940,
+    "sha256": "d01f9f920f581d0aa844a1488f1aafb73c8903b0f0c4215512fa9c55ceef82ca",
+    "seconds": 8.17,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
   }
 ]

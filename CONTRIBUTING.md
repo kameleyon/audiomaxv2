@@ -14,7 +14,7 @@ telling you to `npm install` this project is wrong.
 
 What exists is: the working agreement (`CLAUDE.md`), the root `README.md`, this
 file, `CODEOWNERS`, `docs/`, the documentation gate (`tools/doc-check.mjs`),
-brand assets, and **25 audit records**.
+brand assets, and **27 audit records**.
 
 Contributing today means **documents and decisions**: picking up a Phase 0 item,
 running a spike and recording its evidence, or correcting a document that has
@@ -40,7 +40,7 @@ record.
 
 ```bash
 node tools/doc-check.mjs             # must exit 0
-node tools/doc-check.mjs --self-test # must report 54 passed, 0 failed
+node tools/doc-check.mjs --self-test # must report 67 passed, 0 failed
 ```
 
 Run **both** before every commit. The first checks the documents; the second

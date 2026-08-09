@@ -26,7 +26,7 @@ What is committed is the working agreement, this README, `CONTRIBUTING.md`,
 | --- | --- |
 | Implementation code | **None.** Not started. |
 | `tools/doc-check.mjs` | Present and running. The documentation consistency gate — bidirectional field coverage, migration coverage, 17 prose-regression guards, and an end-to-end control-chain trace. `node tools/doc-check.mjs` must exit 0 before a commit; `--self-test` mutates the live documents and runs the shipped checks, proving that **the check IDs with a mutation** fire on their own defect. Six check IDs and four of the five control chains are verified by hand, not by the harness — it names them in its output. Exits 2 on a fresh clone, because the documents it checks live in the gitignored `resources/`. **Exit 2 is not a pass.** |
-| Commits on `main` | The founding documents, the working agreement, the gate tool and **25 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent *recorded* ruling on it is `PASS WITH FIXES` (round 25), which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
+| Commits on `main` | The founding documents, the working agreement, the gate tool and **27 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent *recorded* ruling on it is `PASS WITH FIXES` (round 25), which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
 | `docs/` (public documentation) | **Present** — created in Phase 0. 5 ADRs in [`docs/architecture/`](docs/architecture/) and the [glossary](docs/glossary.md). `docs/help/` (Guide) does not exist yet. |
 | `CONTRIBUTING.md`, `CODEOWNERS` | **Present** — how to work in this repo, and which review role owns which path. |
 | `assets/` | Present — brand assets. Contents are managed by the design tooling, not by this repo's authors; do not assume a fixed file list. |
@@ -351,13 +351,17 @@ The asymmetry is deliberate.
 
 ## Design status: the spec is not settled
 
-**The most recent recorded verdict on the design documents is a Jury `PASS WITH FIXES`** —
-**round 25**, `resources/audits/2026-08-08-founding-documents-round25.md`:
-0 Blocker · 0 Critical · 5 Major, all tracked with an owner and a date. Round 22 was `FAIL` (2 Critical) and rounds 18-19 returned **`PASS WITH FIXES`**
-(0 Blocker, 0 Critical); **round 17's `FAIL` is superseded.** Halo, the
-accessibility auditor, returned **`ENABLES`** in round 21 — 0 Blocker · 3 Critical
-· 15 Major, and **no foreclosure found**. Halo cannot issue `PASS` before
-implementation and has not.
+**The most recent recorded verdicts are a Halo `FORECLOSES` and a Jury
+`FAIL`** — Halo round 26 (`resources/audits/2026-08-08-founding-documents-round26.md`):
+**2 Blocker · 3 Critical · 8 Major**, six items blocking a commit; Jury round 27:
+**0 Blocker · 2 Critical · 9 Major**. Rounds 18, 19 and 25 returned
+`PASS WITH FIXES`; round 17's and round 22's `FAIL`s are superseded. Halo cannot
+issue `PASS` before implementation and has not.
+
+*(J26-C1, the **sixth** recurrence of this defect: the citation LINK was advanced
+to round 26 and the PROSE beside it was not, so the sentence claimed a pass while
+linking to the document that forecloses. Read `resources/audits/` for ground
+truth — it is committed for exactly this reason.)*
 
 *(J24-M3: this paragraph carried **round 17's** counts under a **round-22** link
 while `docs/architecture/README.md`, in the same commit, correctly recorded round
@@ -389,7 +393,7 @@ asked and how it was answered. **SPIKE A is now the only one gating word sync.**
 | --- | --- |
 | **Which transcription + word-alignment engine (WhisperX or equivalent), and does it cover `en` / `es` / `fr`?** | **Highest risk in the design**, and now the only Phase 0 spike gating word sync. Coverage for `en`/`es`/`fr` is now measured, not uncertain. |
 | ~~**Can provider text-normalization be disabled?**~~ | **RETIRED (`R14-A1`).** We transcribe the audio we generated, so provider normalization is observed rather than predicted and nothing depends on the answer. |
-| **Is transcription accurate enough per language?** | Word sync now rests on recognition quality, which is materially weaker in low-resource languages, and whose failure mode is *fluent* hallucination. **SPIKE A ran 2026-08-08**: within the 250 ms drift bound, `en` 70.8%, `es` 77.3%, `fr` 79.2% — **all three below the 95% bar**, p95 393-540 ms. Match rate is 100%; the gap is placement, not recognition. Self-hosted CPU transcription costs ~$0.07-$0.15 per 9-hour book against $5.40 for a per-minute vendor. |
+| **Is transcription accurate enough per language?** | **No, not yet — measured, and it fails.** `matched_within_drift_pct` **62.5 / 68.2 / 75.0** (`en`/`es`/`fr`) against a bar of **95**, `passes_matched_bar: false` in all three languages under all three configurations (`aligner/spike-a/out/`). Match rate 100% on `en`/`es`, **95.8% on `fr` with 8.7% hallucination**. Cost **$0.165–$0.224 per 9-hour book** self-hosted CPU — still ~25x under Hypereal's $5.40, which is the good news, at a real price. *(J26-C2: this cell previously read 70.8/77.3/79.2, "match rate is 100%" and "$0.07–$0.15". The triple is **not producible by any single run** — two figures were endpoint-credited and the third came from a different model — and every claim was refuted by an artifact staged in the same commit.)* The drift metric still counts clause pauses as misalignment, so 62.5/68.2/75.0 is a **floor**, not a verdict; converting it needs one hand-annotated clip. |
 | ~~Which provider actually serves Haitian Creole TTS~~ | **CLOSED 2026-08-08, zero API calls.** Resolved from production code in the reference stack: **Haitian Creole** was served natively by a **Gemini TTS** model, reached **via OpenRouter** with direct Google as the fallback; no code path calls Google Cloud TTS. It was **not** a technical blocker — and was then removed from scope by owner decision (`docs/architecture/0005`), so `ht` is now refused at the no-route row and produces no audio. See [ADR-0003](docs/architecture/0003-haitian-creole-tts-routing.md), which also records an **open** conflict between that primary→fallback chain and constraint 2 above. What remains open is the row above — whether *transcription* is accurate enough in Haitian Creole, which is a different question with a different answer shape (a WER number against a bar, not a yes/no). |
 | Does Fish Audio bill per UTF-8 byte? | Unverified, and it backs a schema column. One real billed call on accented French gates it. |
 | Which layout-aware OCR engine | Multi-column reading order. Wrong order is *locally fluent*, so a blind user gets scrambled meaning narrated confidently. |

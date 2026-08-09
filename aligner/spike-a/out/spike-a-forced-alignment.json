@@ -1,0 +1,314 @@
+[
+  {
+    "group": "languages",
+    "lang": "en",
+    "words": 24,
+    "median_overlap_pct": 57.5,
+    "pct_overlap_50": 58.3,
+    "median_signed_start_delta_ms": 1.9,
+    "median_abs_error_ms": 59.5,
+    "p95_abs_error_ms": 144.0,
+    "worst_tokens": [
+      "the",
+      "the",
+      "Dr."
+    ],
+    "display_words": 24,
+    "display_coverage_pct": 100.0,
+    "unpaired_display": [],
+    "expect_hard": [
+      {
+        "token": "Dr.",
+        "status": "matched_verbatim",
+        "display_indices": [
+          0
+        ],
+        "heard": "Dr."
+      },
+      {
+        "token": "1984",
+        "status": "matched_verbatim",
+        "display_indices": [
+          6
+        ],
+        "heard": "1984."
+      },
+      {
+        "token": "3",
+        "status": "matched_verbatim",
+        "display_indices": [
+          8
+        ],
+        "heard": "3"
+      },
+      {
+        "token": "47",
+        "status": "matched_verbatim",
+        "display_indices": [
+          14
+        ],
+        "heard": "47"
+      },
+      {
+        "token": "52",
+        "status": "matched_verbatim",
+        "display_indices": [
+          16
+        ],
+        "heard": "52,"
+      },
+      {
+        "token": "1,250",
+        "status": "matched_verbatim",
+        "display_indices": [
+          22
+        ],
+        "heard": "1,250"
+      }
+    ],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  },
+  {
+    "group": "languages",
+    "lang": "es",
+    "words": 22,
+    "median_overlap_pct": 59.4,
+    "pct_overlap_50": 63.6,
+    "median_signed_start_delta_ms": -44.7,
+    "median_abs_error_ms": 70.8,
+    "p95_abs_error_ms": 142.8,
+    "worst_tokens": [
+      "La",
+      "La",
+      "a"
+    ],
+    "display_words": 22,
+    "display_coverage_pct": 100.0,
+    "unpaired_display": [],
+    "expect_hard": [
+      {
+        "token": "Dra.",
+        "status": "matched_via_normalizer",
+        "display_indices": [
+          1
+        ],
+        "heard": "doctora"
+      },
+      {
+        "token": "1984",
+        "status": "matched_verbatim",
+        "display_indices": [
+          7
+        ],
+        "heard": "1984."
+      },
+      {
+        "token": "3",
+        "status": "matched_verbatim",
+        "display_indices": [
+          10
+        ],
+        "heard": "3"
+      },
+      {
+        "token": "47",
+        "status": "matched_verbatim",
+        "display_indices": [
+          16
+        ],
+        "heard": "47"
+      },
+      {
+        "token": "52",
+        "status": "matched_verbatim",
+        "display_indices": [
+          18
+        ],
+        "heard": "52,"
+      },
+      {
+        "token": "1.250",
+        "status": "matched_verbatim",
+        "display_indices": [
+          20
+        ],
+        "heard": "1,250"
+      }
+    ],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  },
+  {
+    "group": "languages",
+    "lang": "fr",
+    "words": 24,
+    "median_overlap_pct": 56.6,
+    "pct_overlap_50": 62.5,
+    "median_signed_start_delta_ms": 5.0,
+    "median_abs_error_ms": 49.7,
+    "p95_abs_error_ms": 216.8,
+    "worst_tokens": [
+      "participants.",
+      "à",
+      "a"
+    ],
+    "display_words": 24,
+    "display_coverage_pct": 100.0,
+    "unpaired_display": [],
+    "expect_hard": [
+      {
+        "token": "Dr",
+        "status": "matched_verbatim",
+        "display_indices": [
+          1
+        ],
+        "heard": "Dr."
+      },
+      {
+        "token": "1984",
+        "status": "matched_verbatim",
+        "display_indices": [
+          8
+        ],
+        "heard": "1984."
+      },
+      {
+        "token": "3",
+        "status": "matched_verbatim",
+        "display_indices": [
+          11
+        ],
+        "heard": "3"
+      },
+      {
+        "token": "47",
+        "status": "matched_verbatim",
+        "display_indices": [
+          17
+        ],
+        "heard": "47"
+      },
+      {
+        "token": "52",
+        "status": "matched_verbatim",
+        "display_indices": [
+          19
+        ],
+        "heard": "52"
+      },
+      {
+        "token": "1 250",
+        "status": "matched_via_normalizer",
+        "display_indices": [
+          21,
+          22
+        ],
+        "heard": "1250 1250"
+      }
+    ],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  },
+  {
+    "group": "holdout",
+    "lang": "en",
+    "words": 25,
+    "median_overlap_pct": 46.2,
+    "pct_overlap_50": 44.0,
+    "median_signed_start_delta_ms": 2.1,
+    "median_abs_error_ms": 44.6,
+    "p95_abs_error_ms": 164.5,
+    "worst_tokens": [
+      "The",
+      "14th",
+      "to"
+    ],
+    "display_words": 26,
+    "display_coverage_pct": 96.2,
+    "unpaired_display": [
+      "percent"
+    ],
+    "expect_hard": [],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  },
+  {
+    "group": "holdout",
+    "lang": "es",
+    "words": 24,
+    "median_overlap_pct": 49.5,
+    "pct_overlap_50": 50.0,
+    "median_signed_start_delta_ms": -35.8,
+    "median_abs_error_ms": 42.3,
+    "p95_abs_error_ms": 117.8,
+    "worst_tokens": [
+      "El",
+      "el",
+      "que"
+    ],
+    "display_words": 31,
+    "display_coverage_pct": 77.4,
+    "unpaired_display": [
+      "comite",
+      "reunio",
+      "Prof.",
+      "Adams",
+      "señalo",
+      "por",
+      "ciento"
+    ],
+    "expect_hard": [],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  },
+  {
+    "group": "holdout",
+    "lang": "fr",
+    "words": 24,
+    "median_overlap_pct": 46.0,
+    "pct_overlap_50": 41.7,
+    "median_signed_start_delta_ms": -16.3,
+    "median_abs_error_ms": 48.9,
+    "p95_abs_error_ms": 156.3,
+    "worst_tokens": [
+      "Le",
+      "de",
+      "euros"
+    ],
+    "display_words": 33,
+    "display_coverage_pct": 72.7,
+    "unpaired_display": [
+      "comite",
+      "reuni",
+      "a",
+      "note",
+      "couts",
+      "augmente",
+      "pour",
+      "cent",
+      "unite."
+    ],
+    "expect_hard": [],
+    "engine": "torchaudio MMS_FA forced alignment",
+    "reference": "lemonfox-asr",
+    "calibration": "none",
+    "_pairing": "positional on DISPLAY TOKEN INDEX. FA tokens are grouped back onto the display token that produced them (so `1984` and `nineteen eighty four` are ONE unit); the reference stream is mapped onto display tokens by measure.match. No surface-form uniqueness filter, so function words are retained (H26-B2, H26-M8).",
+    "_error_basis": "median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT against Lemonfox ASR word timestamps, NOT error against human ground truth. Two mechanisms with uncorrelated error models agreeing bounds the common error; it does not measure it."
+  }
+]
