@@ -1,0 +1,80 @@
+# ── Internal working documents ─────────────────────────────────────
+# Specs, roadmaps and research notes live here and are NOT committed.
+# Audit reports ARE committed (exception below): the Jury gate is
+# enforced by those artifacts, and a governance trail that `git clean`
+# can destroy is not a trail. Audit reports contain no secrets.
+# Public documentation lives in docs/ and IS committed. See CLAUDE.md.
+#
+# NOTE: this excludes resources/* (the CONTENTS), not resources/ (the
+# directory). Git will not re-include a file whose parent directory is
+# excluded, so `resources/` + `!resources/audits/` silently fails to
+# un-ignore anything. Do not "simplify" this back.  (Jury J-C10)
+/resources/*
+!/resources/audits/
+
+# ── Dependencies ───────────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+.yarn/
+
+# ── Secrets ────────────────────────────────────────────────────────
+# Jury J-M5: key material must never be one typo away from a commit.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+id_rsa*
+id_ed25519*
+.railway/
+.vercel/
+.npmrc
+.aws/
+# Defence in depth (J-n6). These must never appear in a project repo, and the
+# host's home directory is itself an initialized git repo with no root
+# .gitignore — so a future mis-rooted `git init` has one more line of defence.
+.ssh/
+.claude.json*
+
+# ── Build output ───────────────────────────────────────────────────
+# Jury J-M5: these are ANCHORED. Unanchored `dist/` or `build/` matches
+# a directory of that name at ANY depth, which silently swallows source
+# files that happen to live in one. Add per-workspace paths here rather
+# than removing the leading slash.
+/dist/
+/build/
+/web/dist/
+/worker/dist/
+/apps/mobile/dist/
+.next/
+.expo/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# ── Aligner sidecar (Python) ───────────────────────────────────────
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+# ANCHORED for the same reason: bare `models/` would match
+# worker/src/models/, an ordinary TypeScript source directory.
+/aligner/models/
+
+# ── Test fixtures ──────────────────────────────────────────────────
+# Jury J-M6: golden-file fixtures must be public-domain only. Anything
+# under a `restricted/` fixture directory is never committed; store the
+# extracted Block[] snapshot and a content hash instead.
+**/fixtures/restricted/
+
+# ── Session / agent scratch ────────────────────────────────────────
+.remember/
+.claude/settings.local.json
+
+# ── Logs & OS ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
