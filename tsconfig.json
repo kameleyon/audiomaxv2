@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  // The root checks nothing of its own. Each workspace owns its tsconfig and is
+  // checked by `pnpm -r typecheck`; project references would require composite
+  // projects, composite requires emit, and emit requires a build directory that
+  // this repository's .gitignore covers for two of three workspaces. Not
+  // emitting is both simpler and the state the ignore rules already describe.
+  "include": []
+}

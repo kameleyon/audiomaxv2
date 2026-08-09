@@ -1,0 +1,32 @@
+{
+  "name": "audiomax",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "audiomax.ai monorepo root. Builds nothing; owns the toolchain pin and the gates.",
+  "packageManager": "pnpm@11.1.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.1.0"
+  },
+  "scripts": {
+    "build": "node -e \"console.log('root build is a no-op by design — each workspace builds itself')\"",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "test": "pnpm -r --if-present test && pnpm run test:aligner",
+    "test:aligner": "python -m unittest discover -s aligner/tests -t aligner -v",
+    "secrets": "node .github/scripts/secret-scan.mjs",
+    "doc-check": "node tools/doc-check.mjs",
+    "doc-check:self-test": "node tools/doc-check.mjs --self-test",
+    "dev:worker": "pnpm --filter @audiomax/worker dev",
+    "dev:aligner": "python aligner/service.py"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^24.10.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0"
+  }
+}

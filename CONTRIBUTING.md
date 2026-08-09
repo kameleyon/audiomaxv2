@@ -6,15 +6,19 @@ finding — report it rather than working around it.
 
 ---
 
-## 1. There is no implementation code yet
+## 1. Phase 0 scaffolding exists; no product feature does
 
-**Nothing to install. Nothing to build. Nothing to run.** There is no
-`package.json`, no lockfile, no service, no test suite. Any instruction anywhere
-telling you to `npm install` this project is wrong.
+There is a `package.json`, a pnpm lockfile, three workspaces, two services with
+`/health`, and 30 tests. **Nothing ingests a document, synthesizes audio or
+serves a segment** — every product path is still design-only.
+
+Use **`pnpm`** (pinned via `packageManager`), not `npm`. Zero runtime
+dependencies by design: `node:http`, `node:test` and the Python stdlib. Nothing
+emits, so there is no build output to ignore.
 
 What exists is: the working agreement (`CLAUDE.md`), the root `README.md`, this
 file, `CODEOWNERS`, `docs/`, the documentation gate (`tools/doc-check.mjs`),
-brand assets, and **27 audit records**.
+brand assets, and **28 audit records**.
 
 Contributing today means **documents and decisions**: picking up a Phase 0 item,
 running a spike and recording its evidence, or correcting a document that has
@@ -40,7 +44,7 @@ record.
 
 ```bash
 node tools/doc-check.mjs             # must exit 0
-node tools/doc-check.mjs --self-test # must report 67 passed, 0 failed
+node tools/doc-check.mjs --self-test # must report 74 passed, 0 failed
 ```
 
 Run **both** before every commit. The first checks the documents; the second

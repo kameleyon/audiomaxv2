@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "types": ["node"],
+    // Nothing here EMITS. Type checking is the job; bundling belongs to the
+    // framework each workspace eventually adopts, and a build output directory
+    // that no .gitignore rule covers is a build output directory that gets
+    // committed. `allowImportingTsExtensions` requires noEmit, which the base
+    // config sets — the two decisions hold each other up.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*.ts"]
+}

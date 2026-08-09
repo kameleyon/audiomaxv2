@@ -1,0 +1,14 @@
+{
+  "name": "@audiomax/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Render worker. Owns provider keys; clients never see them (CLAUDE.md constraint 5).",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "node --watch src/index.ts",
+    "start": "node src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  }
+}

@@ -76,7 +76,7 @@
 
 # ── API surface and clients ──────────────────────────────────────────────────
 /openapi/                       Nexus  Scribe
-/web/                           Halo  Optic     # audit/halo.md WCAG 2.2 AA; audit/optic.md UX
+/apps/web/                         Halo  Optic     # audit/halo.md WCAG 2.2 AA; audit/optic.md UX
 /apps/mobile/                   Halo  Optic     # TalkBack and VoiceOver/iOS live here
 
 

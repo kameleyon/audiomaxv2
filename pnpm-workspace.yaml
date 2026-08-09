@@ -1,0 +1,18 @@
+# Workspace layout — the resolution of the roadmap's `web/` vs `apps/mobile/`
+# depth inconsistency.
+#
+# RULE: deployable SERVICES live at the repository root; shippable CLIENTS live
+# under `apps/`. `worker/` and `aligner/` are services. `apps/web/` and
+# `apps/mobile/` are clients, and they are now at the same depth, which is the
+# whole point — a tree in which one client is at the root and the other is two
+# levels down teaches a contributor nothing about where the next one goes.
+#
+# `aligner/` is a Python sidecar and is deliberately NOT a pnpm workspace. Its
+# tests run from the root `test` script; its dependencies are its own.
+#
+# THIS MOVES A PATH THAT TWO COMMITTED FILES NAME. See the Forge handoff:
+# CODEOWNERS `/web/` and .gitignore `/web/dist/` both refer to the old location
+# and are now defective. Neither file is in this change's write scope.
+packages:
+  - worker
+  - apps/*

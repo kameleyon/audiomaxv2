@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+# A second push supersedes the first; nothing is learned from finishing a run
+# against a commit that has already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs FIRST and on its own, with no install step. A secret scan that depends
+  # on `pnpm install` succeeding is a secret scan that does not run on the day
+  # the lockfile breaks — which is a day secrets are being edited.
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Scan tracked files for key material
+        run: node .github/scripts/secret-scan.mjs
+
+  node:
+    name: typecheck · lint · test (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable corepack
+        # The `packageManager` field pins the version; corepack is what enforces
+        # it. Without this the runner uses whatever pnpm it happens to have.
+        run: corepack enable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        # --frozen-lockfile fails when package.json and pnpm-lock.yaml disagree.
+        # That failure is the point: a lockfile that CI regenerates is a lockfile
+        # that pins nothing.
+        run: pnpm install --frozen-lockfile
+
+      - name: Root build is a no-op
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Test
+        run: pnpm -r --if-present test
+
+  aligner:
+    name: test (python sidecar)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test
+        run: python -m unittest discover -s aligner/tests -t aligner -v
+
+  docs:
+    name: documentation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: doc-check
+        # Exit 2 means the private design documents are absent, which is the
+        # normal state of a clone: `resources/` is gitignored by owner decision.
+        # Exit 2 is NOT a pass and is not treated as one — it is "not applicable
+        # here". Exit 1 fails the job.
+        run: |
+          set +e
+          node tools/doc-check.mjs
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::notice::doc-check NOT RUN — private design documents absent in a clone."
+            exit 0
+          fi
+          exit "$code"
+      - name: doc-check --self-test
+        run: |
+          set +e
+          node tools/doc-check.mjs --self-test
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "::notice::doc-check --self-test NOT RUN — private design documents absent."
+            exit 0
+          fi
+          exit "$code"

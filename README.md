@@ -15,9 +15,20 @@ a Python transcription + word-alignment sidecar (WhisperX), and Supabase.
 
 ## Status: design phase — no implementation exists yet
 
-**Read this section before anything else.** This repository has **no
-implementation code.** There is nothing to install, build, or run. Any
-instruction elsewhere that tells you to `npm install` this project is wrong.
+**Read this section before anything else.** Phase 0 scaffolding now exists —
+three pnpm workspaces, two runnable services with `/health`, 30 tests, a secret
+scan and CI. **No product feature is implemented**: nothing ingests a document,
+synthesizes audio or serves a segment. Use **`pnpm`**, not `npm`; the workspace
+is pinned via `packageManager` and `npm install` will not work.
+
+```
+pnpm install --frozen-lockfile
+pnpm -r test          # worker 11 · apps/web 5 · apps/mobile 5
+pnpm run secrets      # secret scan
+pnpm run doc-check    # the documentation gate
+node worker/src/index.ts     # /health on :8080
+python aligner/service.py    # /health on :8081
+```
 What is committed is the working agreement, this README, `CONTRIBUTING.md`,
 `CODEOWNERS`, the public documentation in `docs/`, the documentation gate
 (`tools/doc-check.mjs`) and the review trail — see the table below.
@@ -25,8 +36,8 @@ What is committed is the working agreement, this README, `CONTRIBUTING.md`,
 | What | State |
 | --- | --- |
 | Implementation code | **None.** Not started. |
-| `tools/doc-check.mjs` | Present and running. The documentation consistency gate — bidirectional field coverage, migration coverage, 17 prose-regression guards, and an end-to-end control-chain trace. `node tools/doc-check.mjs` must exit 0 before a commit; `--self-test` mutates the live documents and runs the shipped checks, proving that **the check IDs with a mutation** fire on their own defect. Six check IDs and four of the five control chains are verified by hand, not by the harness — it names them in its output. Exits 2 on a fresh clone, because the documents it checks live in the gitignored `resources/`. **Exit 2 is not a pass.** |
-| Commits on `main` | The founding documents, the working agreement, the gate tool and **27 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent *recorded* ruling on it is `PASS WITH FIXES` (round 25), which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
+| `tools/doc-check.mjs` | Present and running. The documentation consistency gate — bidirectional field coverage, migration coverage, 17 prose-regression guards, and an end-to-end control-chain trace. `node tools/doc-check.mjs` must exit 0 before a commit; `--self-test` mutates the live documents and runs the shipped checks, proving that **the check IDs with a mutation** fire on their own defect. Eight check IDs and four of the five control chains are verified by hand, not by the harness — it names them in its output. Exits 2 on a fresh clone, because the documents it checks live in the gitignored `resources/`. **Exit 2 is not a pass.** |
+| Commits on `main` | The founding documents, the working agreement, the gate tool and **28 audit records**. The design itself is **not** in the repository — `resources/specs` and `resources/roadmap` are gitignored — and Jury's most recent *recorded* ruling on it is `PASS WITH FIXES` (round 25), which you can read in `resources/audits/`. The commit gate governs the file set under review; the trail is committed so it cannot go missing again. |
 | `docs/` (public documentation) | **Present** — created in Phase 0. 5 ADRs in [`docs/architecture/`](docs/architecture/) and the [glossary](docs/glossary.md). `docs/help/` (Guide) does not exist yet. |
 | `CONTRIBUTING.md`, `CODEOWNERS` | **Present** — how to work in this repo, and which review role owns which path. |
 | `assets/` | Present — brand assets. Contents are managed by the design tooling, not by this repo's authors; do not assume a fixed file list. |
@@ -171,7 +182,7 @@ guessed one is indistinguishable from a real one.
 ```mermaid
 flowchart TB
   subgraph clients["Clients"]
-    W["web/ — React + Vite<br/>library · import · player · reader"]
+    W["apps/web/ — React + Vite<br/>library · import · player · reader"]
     M["apps/mobile/ — Expo<br/>+ camera scan · offline"]
   end
 
@@ -215,11 +226,11 @@ shape, established in Phase 0.
 
 ```
 audioMax/
-├── web/               React + Vite — library, import, player, reader   ── planned
-├── apps/mobile/       Expo React Native — + camera scan, offline       ── planned
-├── worker/            Node/TS on Railway — the pipeline                ── planned
-├── aligner/           Python sidecar — WhisperX transcribe + match     ── planned
-├── supabase/          Migrations, RLS policies, thin edge functions    ── planned
+├── apps/web/               React + Vite — library, import, player, reader   ── present
+├── apps/mobile/       Expo React Native — + camera scan, offline       ── present
+├── worker/            Node/TS on Railway — the pipeline                ── present
+├── aligner/           Python sidecar — WhisperX transcribe + match     ── present
+├── supabase/          Migrations, RLS policies, thin edge functions    ── present
 ├── docs/              Public technical documentation (Scribe)          ── present
 │   ├── architecture/  ADRs — the 5 decisions and why                ── present
 │   ├── glossary.md    The vocabulary you cannot infer                  ── present

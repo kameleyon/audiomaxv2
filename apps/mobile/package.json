@@ -1,0 +1,11 @@
+{
+  "name": "@audiomax/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mobile client (TalkBack and VoiceOver live here). Framework choice is deferred to its own phase and its own ADR.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  }
+}

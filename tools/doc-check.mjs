@@ -24,7 +24,8 @@
  * EXIT    0 clean · 1 findings · 2 not applicable (private docs absent)
  */
 
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
 const DOCS = {
@@ -56,7 +57,11 @@ const CURRENT_REVISION = 19;
 // own artifact and exit 0." Every check in this file read prose. The documents
 // quote numbers; the numbers live here; nothing compared them.
 const ARTIFACT_DIR = 'aligner/spike-a/out';
-const FIXTURES = 'aligner/spike-a/fixtures.json';
+// The audio manifest is the ONLY record in this directory that ties a result to
+// the bytes it scored. J26-M5 killed the mtime-based staleness check: git does
+// not store mtimes, so a clone sets every file to checkout time and the guard
+// was born unreproducible. Everything [ART-STALE] does now is content.
+const MANIFEST = 'tts-manifest.json';
 // Counted from disk, not hand-maintained — a pinned literal is how the v7
 // version guard came to sit green over its own defect (N7-C9).
 const ROUNDS_ON_DISK = existsSync('resources/audits')
@@ -72,11 +77,13 @@ const section = (t, from, to) => {
   return rest < 0 ? t.slice(s) : t.slice(s, s + 1 + rest);
 };
 
-// Every JSON in the artifact directory, with its mtime, plus every key that
-// appears anywhere in it at any depth. `keys` is what lets a document's claim
-// that SPIKE A "returns" a metric be checked against a file that returns it.
+// Every JSON in the artifact directory, plus every key that appears anywhere in
+// it at any depth, plus the CONTENT HASH of every .wav. `keys` is what lets a
+// document's claim that SPIKE A "returns" a metric be checked against a file
+// that returns it; `wavs` is what lets a result be checked against the audio it
+// says it scored, on a fresh clone, where no mtime survives (J26-M5).
 function loadArtifacts() {
-  const out = { files: {}, keys: new Set(), audioMtime: 0, jsonMtime: Infinity, present: false };
+  const out = { files: {}, keys: new Set(), wavs: {}, present: false };
   if (!existsSync(ARTIFACT_DIR)) return out;
   const walk = (v) => {
     if (Array.isArray(v)) return v.forEach(walk);
@@ -86,22 +93,33 @@ function loadArtifacts() {
   };
   for (const f of readdirSync(ARTIFACT_DIR)) {
     const p = `${ARTIFACT_DIR}/${f}`;
-    const mt = statSync(p).mtimeMs;
-    if (f.endsWith('.wav')) { out.audioMtime = Math.max(out.audioMtime, mt); continue; }
+    if (f.endsWith('.wav')) {
+      const buf = readFileSync(p);
+      out.wavs[f] = { sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
+      continue;
+    }
     if (!f.endsWith('.json')) continue;
     try {
       const data = JSON.parse(readFileSync(p, 'utf8'));
-      out.files[f] = { data, mtime: mt };
+      out.files[f] = { data };
       out.present = true;
-      out.jsonMtime = Math.min(out.jsonMtime, mt);
       walk(data);
-    } catch { /* a malformed artifact is caught by ART-PARSE below */ }
+    } catch { /* a malformed artifact is caught by ART-ABSENT below */ }
   }
   return out;
 }
 
-// Collect every numeric value stored under a given key, at any depth.
-function artifactValues(art, key) {
+// Collect every numeric value stored under a given key, at any depth, in ONE
+// artifact file.
+//
+// J26-M2 — this used to union across EVERY file in the directory and then union
+// `<metric>_endpoints_credited` on top, so "any mixture of model, metric
+// definition and configuration passes". The published 70.8/77.3/79.2 is exactly
+// such a mixture: two endpoint-credited figures from the base run and one raw
+// figure from the `small` model. Nothing that unions can see it. Values are
+// therefore harvested PER FILE and PER ACCOUNTING BASIS, and a quoted set has to
+// be reproducible from one of them.
+function valuesIn(data, key) {
   const found = new Set();
   const walk = (v) => {
     if (Array.isArray(v)) return v.forEach(walk);
@@ -112,8 +130,38 @@ function artifactValues(art, key) {
       }
     }
   };
-  for (const f of Object.values(art.files)) walk(f.data);
+  walk(data);
   return found;
+}
+
+// Every (file, basis) pair that reports `key`. A "basis" is an accounting rule:
+// the raw metric, or the endpoint-credited upper bound, which is the SAME
+// quantity computed under a different admission rule and is therefore a
+// different configuration, not an alternative reading of the same one.
+function configurations(art, key) {
+  const out = [];
+  for (const [f, v] of Object.entries(art.files)) {
+    const raw = valuesIn(v.data, key);
+    if (raw.size) out.push({ label: `${f} (as reported)`, vals: raw });
+    const credited = valuesIn(v.data, `${key}_endpoints_credited`);
+    if (credited.size) out.push({ label: `${f} (endpoints credited)`, vals: credited });
+  }
+  return out;
+}
+
+// Every object in an artifact that carries both a language and the duration of
+// the audio it scored. That pair is the provenance link [ART-STALE] checks.
+function scoredRows(data) {
+  const rows = [];
+  const walk = (v) => {
+    if (Array.isArray(v)) return v.forEach(walk);
+    if (v && typeof v === 'object') {
+      if (typeof v.lang === 'string' && typeof v.audio_seconds === 'number') rows.push(v);
+      for (const x of Object.values(v)) walk(x);
+    }
+  };
+  walk(data);
+  return rows;
 }
 
 // ── Prose regressions ────────────────────────────────────────────────────
@@ -351,6 +399,12 @@ const CONTROLS = [
 // shipped artifact guards over a synthetic artifact set.
 const ARTIFACTS = loadArtifacts();
 
+// [ART-FIGURE] abstains where prose binds a number to no metric unambiguously.
+// Counted and printed, never silent: a check that quietly examines nothing is
+// the failure this file was rebuilt in round 7 to end, and J26-M3 is that same
+// failure arriving through an `if (!vals.size) continue`.
+const ABSTENTIONS = new Map();
+
 // ── The self-test specimens, as DATA ─────────────────────────────────────
 // They used to be a run of `trial(...)` calls inside the --self-test branch, so
 // their number was knowable only by running it. CONTRIBUTING.md, README.md and
@@ -360,6 +414,33 @@ const ARTIFACTS = loadArtifacts();
 // Each entry is [id, doc, mutate] and mutates the LIVE document. `opts` entries
 // instead run the shipped checks over injected non-document state, which is the
 // only way to falsify a guard that reads git or the artifact directory.
+
+// A WELL-FORMED synthetic artifact directory, so an artifact trial perturbs one
+// property and nothing else. Overrides merge into `files` rather than replacing
+// it: the previous specimens replaced the whole map, which silently deleted the
+// manifest and made every [ART-STALE] trial pass for the wrong reason.
+const SYNTH = ({ files = {}, wavs, keys, ...rest } = {}) => ({
+  present: true,
+  // The metric names the roadmap's SPIKE A block requires. Listed so an
+  // [ART-METRIC] trial can remove them and nothing else.
+  keys: keys ?? new Set(['median_abs_error_ms', 'p95_abs_error_ms',
+    'matched_within_drift_pct', 'hallucination_rate', 'compute_cost_per_audio_hour_usd']),
+  wavs: wavs ?? { 'en.wav': { sha256: 'aaaa', bytes: 4 } },
+  files: {
+    'tts-manifest.json': { data: [{ path: 'en.wav', sha256: 'aaaa', bytes: 4, seconds: 11.63 }] },
+    'x.json': {
+      data: [{
+        lang: 'en', audio_seconds: 11.63,
+        matched_within_drift_pct: 62.5, match_rate_pct: 100, hallucination_rate: 0,
+        median_drift_ms: 99.7, p95_drift_ms: 426.7,
+        median_abs_error_ms: 120, p95_abs_error_ms: 260,
+      }],
+    },
+    ...files,
+  },
+  ...rest,
+});
+
 const EXTRA_TRIALS = [
   ['PROD', 'roadmap', (t) => t.replace(/utter\(/g, 'utterance of (')],
   ['MIG-H', 'roadmap', (t) => t.split('disclosure_fingerprint').join('~~X~~')],
@@ -392,6 +473,20 @@ const EXTRA_TRIALS = [
   ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
     /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.[^\n]*\n)/,
     '$1| Everything else | Google / Gemini TTS |\n')],
+  // ── J26-M4 — the two synonyms Jury named as defeating the lexical version,
+  // INSERTED ABOVE the refusal, where the ordering leg cannot see them. If these
+  // two do not go red, the repair is the same denylist with more entries.
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
+    '| Languages not enumerated above | Gemini TTS via OpenRouter |\n$1')],
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
+    '| Fallback | Gemini TTS via OpenRouter |\n$1')],
+  // The defeat that survives the restriction leg: a row that NAMES languages and
+  // routes their complement. Leg 3 is the only thing that sees it.
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
+    '| Any language other than `en`, `es`, `fr` | Gemini TTS via OpenRouter |\n$1')],
   // A document stating a --self-test result that is not the one the harness
   // declares. Run against README.md rather than CONTRIBUTING.md so the trial
   // stays live while CONTRIBUTING's own count is open.
@@ -401,23 +496,44 @@ const EXTRA_TRIALS = [
   // which is precisely why CO-DEFAULT exists.
   ['CO-DEFAULT', 'codeowners', (t) => `${t}\n*                               Nobody\n`],
   // ── J22-M5 / H26 — the artifact guards, falsified against injected artifacts.
+  // A well-formed synthetic directory: one result file, one manifest, one audio
+  // hash that agrees with it. Each trial below perturbs exactly one property.
   ['ART-FIGURE', null, null, {
     // A headline figure the artifact does not contain (H26-C1's exact shape).
-    artifacts: { present: true, keys: new Set(['matched_within_drift_pct']), audioMtime: 0,
-      files: { 'x.json': { data: [{ matched_within_drift_pct: 11.1 }], mtime: 1 } } },
+    artifacts: SYNTH({ files: { 'x.json': { data: [{ matched_within_drift_pct: 11.1 }] } } }),
+  }],
+  // J26-M2 — the MIXTURE. Every figure below is real and no run produces the
+  // triple: 70.8 and 77.3 are endpoint-credited from the base run, 79.2 is raw
+  // from the `small` model. This is the exact set that shipped, and the unioning
+  // version of the guard passed it.
+  ['ART-FIGURE', 'readme', (t) => `${t}\n\n\`matched_within_drift_pct\` 70.8 / 77.3 / 79.2 against the bar.\n`],
+  // J26-M1 — stated in PROSE, with no identifier anywhere near it. This is the
+  // form that escaped the membership-only guard and shipped a Critical.
+  ['ART-FIGURE', 'readme', (t) => `${t}\n\nOn this corpus the match rate is 42.4% in every language.\n`],
+  // J26-M3 — the empty harvest. `hallucination_rate` was tracked under a name no
+  // artifact emits, and the guard skipped it with a silent \`continue\` for all
+  // twelve documents. Removing the key from every file must now go RED.
+  ['ART-VACUOUS', null, null, {
+    artifacts: SYNTH({ files: { 'x.json': { data: [{ matched_within_drift_pct: 62.5 }] } } }),
   }],
   ['ART-ABSENT', null, null, {
-    artifacts: { present: false, keys: new Set(), files: {}, audioMtime: 0 },
+    artifacts: { present: false, keys: new Set(), files: {}, wavs: {} },
   }],
   ['ART-METRIC', null, null, {
     // Present but returning nothing the roadmap asks for — H26-M6 exactly.
-    artifacts: { present: true, keys: new Set(['unrelated']), audioMtime: 0,
-      files: { 'x.json': { data: [{ unrelated: 1 }], mtime: 1 } } },
+    artifacts: SYNTH({ keys: new Set(['unrelated']), files: { 'x.json': { data: [{ unrelated: 1 }] } } }),
   }],
   ['ART-STALE', null, null, {
-    // An artifact written BEFORE the audio it scores (H26-C1's second half).
-    artifacts: { present: true, keys: new Set(['matched_within_drift_pct']), audioMtime: 9e12,
-      files: { 'x.json': { data: [{ matched_within_drift_pct: 62.5 }], mtime: 1 } } },
+    // The successor to the mtime check, falsified on CONTENT: the result says it
+    // scored 9.99 s of `en` audio and the manifest says en.wav is 11.63 s. This
+    // trial runs identically on a fresh clone, which the mtime version could not
+    // do at all (J26-M5).
+    artifacts: SYNTH({ files: { 'x.json': { data: [{ lang: 'en', audio_seconds: 9.99 }] } } }),
+  }],
+  ['ART-STALE', null, null, {
+    // The audio no longer hashes to what the manifest recorded — the audio was
+    // replaced and every figure scored against it is stale.
+    artifacts: SYNTH({ wavs: { 'en.wav': { sha256: 'ffff', bytes: 7 } } }),
   }],
   // ── J22-M6, second half — a brand-new top-level directory, which the old
   // allowlist could not see on the day it was created.
@@ -428,6 +544,7 @@ const TRIAL_COUNT = BANNED.length + INVARIANTS.length + STRUCTURAL.length + EXTR
 // ── The checks. One function, so the harness runs exactly what ships. ─────
 function runChecks(src, opts = {}) {
   const out = [];
+  ABSTENTIONS.clear();
   const add = (severity, check, doc, line, message) =>
     out.push({ severity, check, doc, line, message, id: message.match(/\[([\w-]+)\]/)?.[1] });
   const art = opts.artifacts ?? ARTIFACTS;
@@ -630,7 +747,7 @@ function runChecks(src, opts = {}) {
         `[MIG-T] table \`${table}\` is defined in spec §7 and built by no Phase 1 item`);
     }
   }
-  const hashInputs = (src.spec.match(/text_hash = H\(([^)]*)\)/) || [, ''])[1]
+  const hashInputs = (src.spec.match(/text_hash = H\(([^)]*)\)/) || ['', ''])[1]
     .split(',').map((s) => s.trim().replace(/[`*]/g, '')).filter((s) => /^[a-z_]+$/.test(s));
   for (const col of hashInputs) {
     if (col === 'text' || col === 'lang') continue;
@@ -682,7 +799,7 @@ function runChecks(src, opts = {}) {
   // tasks. Exempted as a CLASS with a stated reason, rather than one at a time
   // — Jury M3: "judgement stored in a list with no rationale field".
   const blockKinds = new Set(
-    [...((src.spec.match(/kind:\s*((?:'[a-z_]+'\s*\|?\s*)+)/) || [, ''])[1])
+    [...((src.spec.match(/kind:\s*((?:'[a-z_]+'\s*\|?\s*)+)/) || ['', ''])[1])
       .matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
   const nestedPayload = new Set(['row', 'col', 'marker', 'punctuation', 'symbol', 'emoji']);
   const NOT_A_BUILD_ITEM = new Set([
@@ -726,7 +843,7 @@ function runChecks(src, opts = {}) {
   // 2c-ii. PRODUCER SIGNATURE PARITY. Phase 4.5's `utter(` must take the same
   // arguments the spec declares. A control mentioned elsewhere in the phase is
   // not a control the producer is told about (Halo acceptance mutation 6).
-  const argsOf = (t) => new Set(((t.match(/utter\(([\s\S]*?)\)/) || [, ''])[1])
+  const argsOf = (t) => new Set(((t.match(/utter\(([\s\S]*?)\)/) || ['', ''])[1])
     .split(',').map((s) => s.trim().replace(/[`*\n ]/g, '')).filter((s) => /^[a-z_.[\]]+$/.test(s)));
   const specArgs = argsOf(src.spec);
   const roadArgs = argsOf(phaseOf(/^##\s*Phase 4\.5/m));
@@ -832,33 +949,101 @@ function runChecks(src, opts = {}) {
   // A presence guard cannot see an added row. This is the inversion: EVERY
   // catch-all condition in §3.5 must refuse, not route. One named exclusion
   // (the row that refuses), everything else flagged.
+  // J26-M4 — THE LEXICAL VERSION DID NOT CLOSE THIS. v26 detected a catch-all
+  // with a 15-phrase denylist anchored at the start of the condition cell.
+  // Jury: *"'Languages not enumerated above' or 'Fallback' leaves it green while
+  // routing goes total — defeatable by addition became defeatable by addition
+  // plus a synonym."* A denylist is a list of the phrases someone already
+  // thought of; the next author writes the sixteenth.
+  //
+  // STRUCTURAL REPLACEMENT. Three legs, none of them a phrase list. Every token
+  // either leg reasons about is HARVESTED from the spec — the language codes
+  // from the declared language line and from the table itself, the non-language
+  // dimensions from §7's `voices` column run.
+  //
+  //   1. ORDERING. Exactly one row refuses, and it is the LAST data row. Any row
+  //      appended below it fires whatever its wording. This is the leg that
+  //      answers J22-M6, and it is wording-independent by construction.
+  //   2. RESTRICTION. Every row above the refusal must constrain SOMETHING: it
+  //      must name a language VALUE (a backticked code) or a dimension declared
+  //      on `voices`. Naming the routing key itself — "language", "languages" —
+  //      is not a constraint, it is the name of the thing being constrained, so
+  //      "Languages not enumerated above" fires exactly like "Everything else".
+  //   3. NO DOUBLE CLAIM. A language code may appear in at most one condition.
+  //      This is what stops the defeat that survives leg 2: a row reading
+  //      "Any language other than `en`, `es`, `fr`" names codes, so it looks
+  //      restricted, but every code it names is claimed above it — which means
+  //      the languages it actually routes are the ones nothing enumerates.
   const routing = section(src.spec, /^###\s*3\.5\s/m, /^###\s*3\.6|^##\s*4\./m);
-  // ANCHORED at the start of the condition cell. A catch-all is a row whose
-  // condition places no constraint at all; "Cloned voice, any language" places
-  // one (the voice) and is not a catch-all, which an unanchored pattern cannot
-  // tell -- it flagged that row on the first run of this guard.
-  const CATCHALL = /^[*\s]*(any other|every other|all other|everything else|anything else|otherwise|unlisted|not listed|default|all remaining|any remaining|remaining|all languages?|any languages?|\*)\b/i;
-  let catchAllRows = 0;
+  // §3.5 contains MORE than the routing table — the retry/re-render table lives
+  // under the same heading — so the rows are taken from the FIRST contiguous run
+  // of table lines only. Reading the whole section charged `retry` and
+  // `re_render` with routing languages on the first run of this guard.
+  const routingBlock = [];
   for (const raw of routing.split('\n')) {
-    if (!/^\s*\|/.test(raw) || /^\s*\|[\s:|-]*\|?\s*$/.test(raw)) continue;
-    const cells = raw.split('|').slice(1, -1).map((c) => c.trim());
-    if (!cells.length || !CATCHALL.test(cells[0])) continue;
-    catchAllRows += 1;
-    if (!/NO ROUTE/i.test(raw)) {
-      add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(raw)),
-        `[NO-ROUTE-TOTAL] §3.5 has a catch-all row "${cells[0].slice(0, 40)}" that ROUTES ` +
-        `instead of refusing. The routing table must stay NON-TOTAL: a second catch-all ` +
-        `beneath the no-route row makes routing total over languages again, so ` +
-        `blocked_language_unsupported has no reachable raiser and §8.2's speech_blocker ` +
-        `reports 0 for every document. INV-NO-ROUTE checks the row is PRESENT; this checks ` +
-        `nothing was added under it (J22-M6).`);
-    }
+    const isRow = /^\s*\|/.test(raw);
+    if (isRow) routingBlock.push(raw);
+    else if (routingBlock.length) break;
   }
-  if (routing && catchAllRows !== 1) {
-    add('CRITICAL', 'routing-totality', 'spec', 0,
-      `[NO-ROUTE-TOTAL] §3.5 has ${catchAllRows} catch-all rows; exactly one is required ` +
-      `and it must be the refusal. Zero means routing is total by omission; two or more ` +
-      `means the second one decides.`);
+  const routingRows = routingBlock
+    .filter((raw) => !/^\s*\|[\s:|-]*\|?\s*$/.test(raw))
+    .map((raw) => ({ raw, cells: raw.split('|').slice(1, -1).map((c) => c.trim()) }))
+    .slice(1);   // drop the header row; the `---` separator is filtered above
+  if (routing && routingRows.length) {
+    // Language VALUES: the declared support line ("Languages: `en` / `es` / `fr`")
+    // plus every two-letter code the table itself names, so a row for a language
+    // that is out of scope (`ht`) still counts as restricted.
+    const langCodes = new Set([
+      ...[...(src.spec.match(/Languages:[^\n]*/) || [''])[0].matchAll(/`([a-z]{2})`/g)].map((m) => m[1]),
+      ...[...routing.matchAll(/`([a-z]{2})`/g)].map((m) => m[1]),
+    ]);
+    // Non-language dimensions, harvested from the `voices` column run in §7.1.
+    // A row may legitimately key on the VOICE rather than the language.
+    const voiceCols = columnsOf.get('voices') ?? new Set();
+    const dimStems = new Set(['voice']);   // the table's own name; always a dimension
+    for (const col of voiceCols) {
+      for (const part of col.split('_')) if (part.length >= 4) dimStems.add(part);
+    }
+    const refusals = routingRows.filter((r) => /NO ROUTE/i.test(r.raw));
+    if (refusals.length !== 1) {
+      add('CRITICAL', 'routing-totality', 'spec', 0,
+        `[NO-ROUTE-TOTAL] §3.5 has ${refusals.length} rows that refuse; exactly one is ` +
+        `required. Zero means routing is total by omission, so blocked_language_unsupported ` +
+        `has no reachable raiser and §8.2's speech_blocker reports 0 for every document.`);
+    } else if (routingRows[routingRows.length - 1] !== refusals[0]) {
+      add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(refusals[0].raw)),
+        `[NO-ROUTE-TOTAL] the NO ROUTE row is not the LAST row of §3.5; ` +
+        `${routingRows.length - 1 - routingRows.indexOf(refusals[0])} row(s) follow it. A row ` +
+        `beneath the refusal makes routing total over languages again — this is J22-M6, and ` +
+        `it does not matter what the added row is called.`);
+    }
+    const claimed = new Map();
+    for (const r of routingRows) {
+      if (/NO ROUTE/i.test(r.raw)) continue;
+      const cond = r.cells[0] ?? '';
+      const codes = [...cond.matchAll(/`([a-z]{2})`/g)].map((m) => m[1]).filter((c) => langCodes.has(c));
+      const dims = [...dimStems].filter((s) => new RegExp(`\\b${s}`, 'i').test(cond));
+      if (!codes.length && !dims.length) {
+        add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+          `[NO-ROUTE-TOTAL] §3.5 row "${cond.slice(0, 48)}" ROUTES without constraining ` +
+          `anything: it names no language code from {${[...langCodes].sort().join(', ')}} and no ` +
+          `dimension declared on \`voices\` {${[...dimStems].sort().join(', ')}}. Naming the ` +
+          `routing key ("language", "languages") is not a constraint. An unconstrained routing ` +
+          `row makes the table total over languages, which leaves ` +
+          `blocked_language_unsupported with no reachable raiser (J17-C1, J22-M6, J26-M4).`);
+      }
+      for (const c of codes) {
+        if (claimed.has(c)) {
+          add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+            `[NO-ROUTE-TOTAL] §3.5 names \`${c}\` in two routing conditions ` +
+            `("${claimed.get(c).slice(0, 32)}" and "${cond.slice(0, 32)}"). A second row citing ` +
+            `codes already claimed above it is not routing those languages — it is routing ` +
+            `the complement, which is the catch-all this table may not contain (J26-M4).`);
+        } else {
+          claimed.set(c, cond);
+        }
+      }
+    }
   }
 
   // 6c. CODEOWNERS TOTALITY — the same defeat-by-addition shape, in the file
@@ -921,45 +1106,216 @@ function runChecks(src, opts = {}) {
           `is a claim, not a measurement (H26-M6).`);
       }
     }
-    // (b) A figure attributed to an artifact metric must be IN the artifact.
-    // H26-C1: "Match rate 100% all three languages" was contradicted by the only
-    // file computing it, and the gate exited 0 because no guard opened the file.
-    const TRACKED = ['matched_within_drift_pct', 'hallucination_rate_pct', 'median_drift_ms',
-      'p95_drift_ms', 'median_abs_error_ms', 'p95_abs_error_ms'];
-    for (const [key, txt] of Object.entries(src)) {
-      for (const metric of TRACKED) {
-        const vals = artifactValues(art, metric);
-        if (!vals.size) continue;
-        // Also accept the labelled upper bound, which is the same quantity.
-        for (const extra of artifactValues(art, `${metric}_endpoints_credited`)) vals.add(extra);
-        for (const m of txt.matchAll(new RegExp(`\`?${metric}\`?([\\s\\S]{0,120})`, 'g'))) {
-          // `§` and `#` are excluded from the lookbehind: §6.1 and §8.2 are
-          // section references, not measurements, and the first run of this
-          // guard reported §6.1 as a contradicted figure.
-          for (const n of m[1].matchAll(/(?<![\w.§#])(\d{1,3}\.\d)(?![\d])/g)) {
-            const v = Number(n[1]);
-            if (v === 95 || v === 250 || v === 300) continue;   // the bars, not measurements
-            if (vals.has(v)) continue;
-            add('MAJOR', 'artifact', key, lineOf(txt, m.index),
-              `[ART-FIGURE] quotes ${v} for \`${metric}\`; ${ARTIFACT_DIR} reports ` +
-              `{${[...vals].sort((a, b) => a - b).join(', ')}}. A headline that contradicts ` +
-              `its own artifact is H26-C1; re-run the harness or correct the figure, and say ` +
-              `which.`);
-          }
-        }
+    // (b) A figure attributed to an artifact metric must be IN the artifact,
+    // and a SET of figures presented as one result must come out of ONE
+    // configuration. H26-C1: "Match rate 100% all three languages" was
+    // contradicted by the only file computing it, and the gate exited 0 because
+    // no guard opened the file.
+    //
+    // Three defects in the v26 form, all found by Jury:
+    //   J26-M3  `hallucination_rate_pct` is not a key any artifact emits — every
+    //           file writes `hallucination_rate` — so `if (!vals.size) continue`
+    //           skipped the metric silently for all twelve documents. The metric
+    //           that feeds the pre-payment disclosure to blind users had a guard
+    //           that checked nothing. The key is corrected below and an EMPTY
+    //           HARVEST IS NOW A FINDING ([ART-VACUOUS]), not a `continue`.
+    //   J26-M1  it was MEMBERSHIP-ONLY on the literal identifier, so a figure
+    //           stated in prose ("match rate is 100%") was invisible. That is how
+    //           a Critical shipped in README.md. Metrics now carry a prose alias.
+    //   J26-M2  it UNIONED every file and every accounting basis, so a mixture
+    //           passed. Checked per (file, basis) now — see `configurations`.
+    const TRACKED = [
+      { key: 'matched_within_drift_pct', alias: /match(?:ed)?[ _-]within[ _-]drift/i },
+      { key: 'match_rate_pct', alias: /match rate/i },
+      { key: 'hallucination_rate', alias: /hallucination/i },
+      { key: 'median_drift_ms', alias: /median drift/i },
+      { key: 'p95_drift_ms', alias: /p95 drift/i },
+      { key: 'median_abs_error_ms', alias: /median abs(?:olute)? error/i },
+      { key: 'p95_abs_error_ms', alias: /p95 abs(?:olute)? error/i },
+    ];
+    // The declared bars and bounds. They are targets stated beside a measurement,
+    // never a measurement, and they are declared HERE rather than discovered so
+    // that adding one is a visible edit.
+    const BARS = new Set([95, 250, 300, 2]);
+    // A sentence terminator: `.`/`;`/`!`/`?` followed by whitespace or end. The
+    // digit lookahead keeps `62.5` and `spike-a-results.json` from ending one.
+    const TERMINATOR = /[.;!?](?=\s|$)/g;
+    // A number that is a FIGURE, not part of an identifier or a section
+    // reference. `agree_within_250ms_pct` must not yield 250, `§6.1` must not
+    // yield 6.1, and `2026-08-09` must not yield anything.
+    const FIGURE = /(?<![\w.§#-])(\d{1,3}(?:\.\d)?)(%?)(?![\w.\d-])/g;
+    // A bare integer is a COUNT far more often than a measurement — "3 hits",
+    // "50 ms", "20 keys". A figure qualifies as a reading of a percentage metric
+    // only with a decimal or a `%`, and of a millisecond metric only with a
+    // decimal or a trailing `ms`. Without this the guard reported `3` from
+    // "`matched_within_drift_pct` — 3 hits" as a contradicted measurement.
+    const qualifies = (metric, m, txt) => {
+      if (m[1].includes('.')) return true;
+      if (m[2] === '%') return /_pct$|_rate$/.test(metric);
+      return /_ms$/.test(metric) && /^\s?ms\b/.test(txt.slice(m.index + m[0].length));
+    };
+
+    for (const { key: metric } of TRACKED) {
+      if (!configurations(art, metric).length) {
+        add('CRITICAL', 'artifact', 'roadmap', 0,
+          `[ART-VACUOUS] no file in ${ARTIFACT_DIR} reports \`${metric}\`, so every ` +
+          `[ART-FIGURE] comparison against it checks NOTHING. This is J26-M3 verbatim: the ` +
+          `previous version tracked \`${metric}_pct\`-style near-misses and skipped them with ` +
+          `a silent \`continue\`. A guard whose input set is empty must go red, not quiet — ` +
+          `either the harness stopped emitting the metric or this list has the wrong name.`);
       }
     }
-    // (c) An artifact must not PREDATE the audio it scores. Round 26 found
-    // out/spike-a-results.json older than es.wav and fr.wav at every observation
-    // -- so the headline was credited against audio the run never heard, and the
-    // roadmap notes it "is a property of the harness, not one bad run".
-    if (art.audioMtime) {
-      for (const [f, v] of Object.entries(art.files)) {
-        if (v.mtime < art.audioMtime) {
+
+    for (const [key, txt] of Object.entries(src)) {
+      // 1. Where each metric is MENTIONED — by identifier or in prose. The two
+      // kinds bind differently, because they carry different evidence that the
+      // number beside them is a reading of that metric.
+      const mentions = [];
+      for (const { key: metric, alias } of TRACKED) {
+        for (const m of txt.matchAll(new RegExp(`\`?${metric}\`?`, 'g'))) {
+          mentions.push({ metric, kind: 'id', at: m.index, end: m.index + m[0].length });
+        }
+        for (const m of txt.matchAll(new RegExp(alias.source, 'gi'))) {
+          mentions.push({ metric, kind: 'prose', at: m.index, end: m.index + m[0].length });
+        }
+      }
+      if (!mentions.length) continue;
+
+      // 2. Every sentence terminator, so attribution cannot cross one. A figure
+      // in the next sentence belongs to the next sentence.
+      const stops = [...txt.matchAll(TERMINATOR)].map((m) => m.index);
+      const crosses = (a, b) => stops.some((s) => s >= Math.min(a, b) && s < Math.max(a, b));
+
+      // 3. BINDING. Three admissible shapes, all of them narrow on purpose. The
+      // guard abstains where the prose is ambiguous rather than guessing, and it
+      // says so in the run summary — an abstention that is COUNTED is not the
+      // silent `continue` of J26-M3.
+      //
+      //   (a) `<identifier>` … <figure>   — an identifier is strong evidence, so
+      //       it reaches 60 chars; nothing with a digit and no sentence end may
+      //       lie between, which is what stops "`p95_abs_error_ms` is a timing
+      //       bound and cannot see … a token timed to 50 ms".
+      //   (b) <prose metric> … <figure>   — "match rate is 100%". 20 chars, and
+      //       the gap may hold no digit and no punctuation, so
+      //       "Match rate 100% on `en`/`es`, **95.8%" does not charge 95.8 to it.
+      //   (c) <figure> <prose metric>     — "8.7% hallucination". Whitespace and
+      //       a percent sign only, so `70.8/77.3/79.2, "match rate is 100%"`
+      //       does not charge the triple to the phrase that follows it.
+      // A slash-run — `70.8 / 77.3 / 79.2` — is ONE quotation, one figure per
+      // language, and it binds as a unit. Grouping AFTER binding does not work:
+      // the "no digit in the gap" rule then rejects every member but the first,
+      // the run collapses to a singleton, and 70.8 alone IS reproducible. The
+      // triple is the defect; the triple has to be the thing that is checked.
+      const runs = [];
+      for (const m of txt.matchAll(FIGURE)) {
+        const f = { m, v: Number(m[1]), at: m.index, end: m.index + m[0].length };
+        const prev = runs[runs.length - 1];
+        const last = prev && prev[prev.length - 1];
+        if (last && /^\s*[/·]\s*$/.test(txt.slice(last.end, f.at))) prev.push(f);
+        else runs.push([f]);
+      }
+
+      let abstained = 0;
+      for (const run of runs) {
+        const head = run[0];
+        const tail = run[run.length - 1];
+        let best = null;
+        let near = false;
+        for (const mention of mentions) {
+          let gap = null;
+          if (mention.end <= head.at) {
+            gap = head.at - mention.end;
+            const between = txt.slice(mention.end, head.at);
+            if (mention.kind === 'id') {
+              if (gap > 60 || /\d/.test(between) || crosses(mention.end, head.at)) gap = null;
+            } else if (gap > 20 || !/^[^\d.,;:"()]*$/.test(between)) gap = null;
+          } else if (mention.at >= tail.end && mention.kind === 'prose') {
+            gap = mention.at - tail.end;
+            if (gap > 12 || !/^[\s%]*$/.test(txt.slice(tail.end, mention.at))) gap = null;
+          }
+          if (gap === null) continue;
+          near = true;
+          if (!run.some((f) => qualifies(mention.metric, f.m, txt))) continue;
+          if (!best || gap < best.gap) best = { gap, metric: mention.metric };
+        }
+        if (!best) { if (near) abstained += 1; continue; }
+
+        const metric = best.metric;
+        const wanted = run.map((f) => f.v);
+        if (wanted.every((v) => BARS.has(v))) continue;   // a bar quoted as a bar
+        const configs = configurations(art, metric);
+        if (!configs.length) continue;                    // already [ART-VACUOUS]
+        if (configs.some((c) => wanted.every((v) => c.vals.has(v)))) continue;
+        add('MAJOR', 'artifact', key, lineOf(txt, head.at),
+          `[ART-FIGURE] quotes ${wanted.join(' / ')} for \`${metric}\`, and NO single ` +
+          `configuration in ${ARTIFACT_DIR} produces that${wanted.length > 1 ? ' set' : ''}. ` +
+          `Reported: ${configs.map((c) => `${c.label} {${[...c.vals].sort((a, b) => a - b).join(', ')}}`).join(' · ')}. ` +
+          `A figure set assembled from more than one file or more than one accounting basis is ` +
+          `not a run's output — it is a construction (J26-M2). Re-run the harness or correct ` +
+          `the figure, and say which.`);
+      }
+      if (abstained) ABSTENTIONS.set(key, (ABSTENTIONS.get(key) ?? 0) + abstained);
+    }
+    // (c) PROVENANCE BY CONTENT (J26-M5). This compared FILESYSTEM MTIMES, and
+    // git does not store mtimes: a clone sets every file to checkout time, so
+    // the guard was born unreproducible — it could never fire for the reviewer
+    // it exists to serve. Nothing below reads a timestamp. Three legs, all of
+    // them content that survives a clone:
+    //
+    //   (i)   the audio manifest must exist and describe every .wav present;
+    //   (ii)  every .wav must still hash to the sha256 the manifest recorded —
+    //         if the audio changed, every result scoring it is stale;
+    //   (iii) every result row that names a language and an `audio_seconds`
+    //         must agree with the manifest's duration for that language's audio.
+    //
+    // Leg (iii) is the direct successor to the mtime check. Round 26's defect
+    // was `spike-a-results.json` describing audio it never heard, and the tell
+    // was that the audio had been CORRECTED — different bytes, different
+    // duration — while the results still carried the old one.
+    const manifest = art.files[MANIFEST]?.data;
+    const wavs = art.wavs ?? {};
+    if (!Array.isArray(manifest)) {
+      add('MAJOR', 'artifact', 'roadmap', 0,
+        `[ART-STALE] ${ARTIFACT_DIR}/${MANIFEST} is absent or is not a list. It is the only ` +
+        `record tying a result to the bytes it scored, and without it no clone can tell ` +
+        `whether a figure describes the audio in the repository (J26-M5).`);
+    } else {
+      const byPath = new Map(manifest.filter((r) => r && r.path).map((r) => [r.path, r]));
+      for (const [wav, got] of Object.entries(wavs)) {
+        const rec = byPath.get(wav);
+        if (!rec) {
           add('MAJOR', 'artifact', 'roadmap', 0,
-            `[ART-STALE] ${ARTIFACT_DIR}/${f} was written BEFORE the newest audio in the same ` +
-            `directory (${new Date(v.mtime).toISOString()} < ${new Date(art.audioMtime).toISOString()}). ` +
-            `It cannot describe that audio. Re-run the step that writes it (H26-C1).`);
+            `[ART-STALE] ${ARTIFACT_DIR}/${wav} is present and ${MANIFEST} does not describe ` +
+            `it. Audio with no recorded hash cannot be tied to any result.`);
+        } else if (rec.sha256 !== got.sha256 || rec.bytes !== got.bytes) {
+          add('MAJOR', 'artifact', 'roadmap', 0,
+            `[ART-STALE] ${ARTIFACT_DIR}/${wav} hashes to ${got.sha256.slice(0, 12)}… ` +
+            `(${got.bytes} bytes); ${MANIFEST} records ${String(rec.sha256).slice(0, 12)}… ` +
+            `(${rec.bytes} bytes). The audio changed after the manifest was written, so every ` +
+            `figure scored against it is stale. Re-run the step that writes it (H26-C1).`);
+        }
+      }
+      for (const rec of byPath.values()) {
+        if (!wavs[rec.path]) {
+          add('MAJOR', 'artifact', 'roadmap', 0,
+            `[ART-STALE] ${MANIFEST} records ${rec.path} and no such file is in ` +
+            `${ARTIFACT_DIR}. The evidence a result cites is not in the repository.`);
+        }
+      }
+      for (const [f, v] of Object.entries(art.files)) {
+        if (f === MANIFEST) continue;
+        for (const row of scoredRows(v.data)) {
+          const rec = byPath.get(`${row.lang}.wav`);
+          if (!rec) {
+            add('MAJOR', 'artifact', 'roadmap', 0,
+              `[ART-STALE] ${ARTIFACT_DIR}/${f} reports a result for \`${row.lang}\` and ` +
+              `${MANIFEST} has no entry for ${row.lang}.wav — the audio it scored is unidentified.`);
+          } else if (Math.abs(Number(rec.seconds) - row.audio_seconds) > 0.011) {
+            add('MAJOR', 'artifact', 'roadmap', 0,
+              `[ART-STALE] ${ARTIFACT_DIR}/${f} scored ${row.audio_seconds}s of \`${row.lang}\` ` +
+              `audio; ${MANIFEST} says ${row.lang}.wav is ${rec.seconds}s. The result describes ` +
+              `audio that is not the audio in this repository (H26-C1, J26-M5). Re-run it.`);
+          }
         }
       }
     }
@@ -1134,7 +1490,7 @@ function runChecks(src, opts = {}) {
     }
   }
   // Enum-count claims must match the declared union.
-  const irCount = (src.spec.match(/type InsertedReason =([\s\S]*?)\n\n/) || [, ''])[1]
+  const irCount = (src.spec.match(/type InsertedReason =([\s\S]*?)\n\n/) || ['', ''])[1]
     .split('|').filter((s) => /'/.test(s)).length;
   // Match "all five" AND the "every" evasion that emptied this guard in v7
   // (N8-M10/N8-m2): rewording a wrong count to a vague word is not a fix.
@@ -1292,6 +1648,15 @@ findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
 if (!findings.length) {
   console.log('doc-check: clean — 0 findings');
   console.log(`  prose guards ${BANNED.length} · structural ${STRUCTURAL.length} · controls ${CONTROLS.length}`);
+  // Say what was NOT examined. [ART-FIGURE] binds a number to a metric only in
+  // three narrow shapes and abstains otherwise; an abstention it did not report
+  // would be J26-M3 again, wearing a different regex.
+  const skipped = [...ABSTENTIONS.entries()].sort((a, b) => b[1] - a[1]);
+  if (skipped.length) {
+    const total = skipped.reduce((n, [, c]) => n + c, 0);
+    console.log(`  [ART-FIGURE] abstained on ${total} figure(s) whose metric the prose does not`);
+    console.log(`  bind unambiguously: ${skipped.map(([k, c]) => `${k} ${c}`).join(', ')}. Those are read by hand.`);
+  }
   console.log('  run --self-test to verify each guard still fires on its own defect');
 } else {
   console.log(`doc-check: ${findings.length} finding(s)\n`);

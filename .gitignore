@@ -45,7 +45,7 @@ id_ed25519*
 # than removing the leading slash.
 /dist/
 /build/
-/web/dist/
+/apps/web/dist/
 /worker/dist/
 /apps/mobile/dist/
 .next/

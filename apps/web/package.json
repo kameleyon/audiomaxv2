@@ -1,0 +1,11 @@
+{
+  "name": "@audiomax/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Web client. Framework choice is deferred to its own phase and its own ADR.",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test"
+  }
+}
