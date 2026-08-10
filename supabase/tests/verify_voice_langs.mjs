@@ -55,8 +55,6 @@ if (!existsSync(MIG_DIR)) {
 const files = readdirSync(MIG_DIR).filter((f) => f.endsWith('.sql')).sort();
 const sqlOf = Object.fromEntries(files.map((f) => [f, readFileSync(join(MIG_DIR, f), 'utf8')]));
 
-const M_RLS = files.find((f) => f.includes('rls_class_rule'));
-const M_VOICES = files.find((f) => f.includes('_voices'));
 const M_VL = files.find((f) => f.includes('voice_langs'));
 
 // `--` to end of line. Every guard below that must not be satisfied by PROSE
@@ -97,16 +95,65 @@ const floor = VL_BODY.match(/constraint\s+voice_langs_evidence_floor\s+check\s*\
 const resolver = ALL_CODE.match(/create or replace function public\.voice_lang_sync_grade[\s\S]*?\$fn\$([\s\S]*?)\$fn\$/i)?.[1] ?? '';
 const gradeEnum = ALL_CODE.match(/create type public\.sync_grade as enum\s*\(([\s\S]*?)\)/i)?.[1] ?? '';
 const metricEnum = ALL_CODE.match(/create type public\.sync_metric as enum\s*\(([\s\S]*?)\)/i)?.[1] ?? '';
-const ruleCode = M_RLS ? CODE[M_RLS] : '';
+// EVERY migration that defines a rule function, not just the first one.
+//
+// This used to be `files.find(f => f.includes('rls_class_rule'))` — the FIRST
+// match in sorted order. The moment the rule was superseded by a later
+// migration (20260810000100, J28-minor-a/-b), every static proof below would
+// have kept reading the OLD file and reporting PASS on text the database no
+// longer runs. A guard that pins itself to the first version of the thing it
+// guards is worse than no guard: it goes green precisely when the fix lands.
+const RULE_FILES = files.filter((f) =>
+  /function\s+private\.rls_(obligated_tables|class_violations)\s*\(/i.test(CODE[f]));
+const ruleCode = RULE_FILES.map((f) => CODE[f]).join('\n');
+
 // The BODIES of the two rule functions, not the whole file. `COMMENT ON` text
 // is a SQL string literal and survives comment-stripping, so a guard run over
 // the file can be satisfied by the migration's own description of itself —
 // which is J26-M3 (`[ART-FIGURE]` checking nothing) reproduced here. Caught by
 // mutation M15 while writing this script; the guard is scoped instead.
-const fnBody = (name) =>
-  ruleCode.match(new RegExp(`function private\\.${name}\\([\\s\\S]*?\\$fn\\$([\\s\\S]*?)\\$fn\\$`, 'i'))?.[1] ?? '';
+//
+// LAST definition wins, because `create or replace` means the last one is the
+// one Postgres ends up holding. Taking the last match rather than the file also
+// keeps this correct if a future migration replaces only ONE of the two.
+//
+// ANCHORED ON `create ... function`, and that word is load-bearing. The anchor
+// used to be the bare name, which also matches every CALL SITE — and a call
+// site is followed by a `$fn$ … $fn$` pair too (the *enclosing* function's).
+// Reading the first match hid this, because a definition always preceded its
+// callers; switching to the last match surfaced it immediately as five static
+// proofs reading the body of a DIFFERENT function and failing. Found by running
+// it, not by review: the guard was extracting `assert_rls_class_rule`'s body
+// and cheerfully asserting things about the violations rule from it.
+const fnBody = (name) => {
+  const re = new RegExp(
+    `create\\s+(?:or\\s+replace\\s+)?function\\s+private\\.${name}\\s*\\(`
+    + `[\\s\\S]*?\\$fn\\$([\\s\\S]*?)\\$fn\\$`, 'gi');
+  const all = [...ruleCode.matchAll(re)];
+  return all.length ? all[all.length - 1][1] : '';
+};
 const OBLIGATED_FN = fnBody('rls_obligated_tables');
 const VIOLATIONS_FN = fnBody('rls_class_violations');
+const ASSERT_FN = fnBody('assert_rls_class_rule');
+
+// The declaration of the violations function that is in force — its RETURN
+// signature lives outside the $fn$ body, so it needs its own last-wins slice.
+const VIOLATIONS_DECL = (() => {
+  const all = [...ruleCode.matchAll(
+    /create\s+(?:or\s+replace\s+)?function\s+private\.rls_class_violations\s*\(\s*\)\s*returns\s+table\s*\(([\s\S]*?)\)/gi)];
+  return all.length ? all[all.length - 1][1] : '';
+})();
+
+// Which migrations create a table — COMPUTED. S12 used to name the two known
+// ones, which is the same "list, not rule" defect the RLS migration exists to
+// correct, reproduced inside the harness that proves it. A third table-creating
+// migration would have been exempt from the ordering rule by never having been
+// added to the array.
+const TABLE_CREATING = files.filter((f) => /create\s+table\s+public\./i.test(CODE[f]));
+const lastStatement = (f) => (CODE[f].trim().split('\n').pop() ?? '').trim();
+
+// Presence is a weak guard when a property has to hold in more than one place.
+const count = (re, s) => (s.match(re) ?? []).length;
 
 const STATIC = [
   ['S1', 'migrations are timestamp-ordered and unambiguous',
@@ -185,8 +232,69 @@ const STATIC = [
   ['S11', 'the class rule reports a renamed user key rather than silently exempting it',
     () => /'unclassifiable'/.test(VIOLATIONS_FN) && /owner\|account/.test(VIOLATIONS_FN)],
 
-  ['S12', 'every table-creating migration ends by asserting the class rule',
-    () => [M_VOICES, M_VL].every((f) => f && /select private\.assert_rls_class_rule\(\);\s*$/m.test(CODE[f]))],
+  ['S12', 'every table-creating migration ENDS by asserting the class rule (computed, not listed)',
+    () => TABLE_CREATING.length >= 2
+      // `\s*$` under /m matched the statement ANYWHERE on its own line, so the
+      // ordering this rule is entirely about — assert LAST, after the table
+      // exists — was never actually checked. It is the last statement or it is
+      // not the tripwire it claims to be.
+      && TABLE_CREATING.every((f) => lastStatement(f) === 'select private.assert_rls_class_rule();')],
+
+  // -- J28-minor-b -----------------------------------------------------------
+  ['S13', 'the obligation covers PARTITIONED parents, not just relkind r (J28-minor-b)',
+    () => /relkind\s+in\s*\(\s*'r'\s*,\s*'p'\s*\)/i.test(OBLIGATED_FN)
+      // Both legs, or a partitioned table is obligated and then never examined.
+      && /relkind\s+in\s*\(\s*'r'\s*,\s*'p'\s*\)/i.test(VIOLATIONS_FN)
+      // Leaf partitions stay out of the obligation ON PURPOSE — the parent's
+      // policies cover reads through the parent. If this exclusion is ever
+      // dropped, the rule starts failing on the CORRECT partitioned layout.
+      && /not\s+c?\.?relispartition/i.test(OBLIGATED_FN)],
+
+  ['S14', 'the unclassifiable leg READS relrowsecurity and does not block a protected table (J28-minor-a)',
+    () => /'unclassifiable_protected'/.test(VIOLATIONS_FN)
+      // The severity must be DERIVED from relrowsecurity, not hard-coded true.
+      && /case\s+when\s+c\.relrowsecurity/i.test(VIOLATIONS_FN)
+      && /not\s+c\.relrowsecurity/i.test(VIOLATIONS_FN)
+      // and it has to be readable off the row rather than inferred elsewhere
+      && /blocking\s+boolean/i.test(VIOLATIONS_DECL)],
+
+  ['S15', 'a partition of an obligated parent is checked for a DIRECT grant that no policy covers',
+    () => /'partition_directly_granted'/.test(VIOLATIONS_FN)
+      && /pg_partition_root\s*\(/i.test(VIOLATIONS_FN)
+      // Reachability is computed from the catalog, not from a list of role
+      // names — a role list would be defeatable by adding a role.
+      //
+      // COUNTED, not merely present. `/rolbypassrls/.test(...)` was the first
+      // version and mutation M4 walked straight through it: strip the bypass
+      // exclusion from ONE of the two ACL branches and the string is still in
+      // the file, so the guard stays green while half the rule is gone. Every
+      // ACL source must carry its own exclusion, and there are two sources —
+      // the table ACL and the column ACLs — so the counts have to agree.
+      && count(/aclexplode\s*\(/gi, VIOLATIONS_FN) >= 2
+      && count(/aclexplode\s*\(/gi, VIOLATIONS_FN) === count(/rolbypassrls/gi, VIOLATIONS_FN)
+      && count(/aclexplode\s*\(/gi, VIOLATIONS_FN) === count(/rolsuper/gi, VIOLATIONS_FN)
+      // BOTH acls. A column grant never touches relacl, so a relacl-only test
+      // calls a readable partition unreachable.
+      && /attacl/.test(VIOLATIONS_FN)],
+
+  ['S16', 'the assert SEPARATES stop from say-so: non-blocking findings are still printed',
+    () => /if\s+v\.blocking\s+then/i.test(ASSERT_FN)
+      && /raise\s+notice/i.test(ASSERT_FN)
+      && /raise\s+exception/i.test(ASSERT_FN)],
+
+  ['S17', 'the static guards read the definition IN FORCE, not the superseded one',
+    () => {
+      // The whole class of bug this file just had. Anchor the check to a
+      // property the OLD definitions cannot satisfy and the new ones must:
+      // if `fnBody` ever slides back to a first match, a call site, or the
+      // wrong function, one of these three bodies stops being what it says.
+      const distinct = new Set([OBLIGATED_FN, VIOLATIONS_FN, ASSERT_FN]);
+      return distinct.size === 3
+        && /rls_obligated_tables/.test(VIOLATIONS_FN)      // violations calls it
+        && !/rls_obligated_tables\s*\(\s*\)/.test(OBLIGATED_FN) // it does not call itself
+        && /rls_class_violations/.test(ASSERT_FN)          // assert calls violations
+        && !/\$fn\$/.test(OBLIGATED_FN + VIOLATIONS_FN + ASSERT_FN); // no body spans a delimiter
+    }],
 ];
 
 // ---------------------------------------------------------------------------
@@ -362,6 +470,208 @@ begin
   raise notice 'L5 ok — both catalogue tables are outside the obligation BY THE RULE';
 end
 $probe$;
+
+-- ===========================================================================
+-- R1..R9 — THE CLASS RULE ITSELF, EXERCISED AGAINST A REAL CATALOG.
+--
+-- The static proofs above establish that the rule SAYS these things. These
+-- establish that Postgres DOES them, which is a different claim and the one
+-- that was missing for three rounds. Every relation and role below is created
+-- inside this transaction and dropped again before L6, so the schema L6
+-- asserts over is the real one and not a probe fixture.
+-- ===========================================================================
+create role verify_probe_client nologin;
+create role verify_probe_bypass nologin bypassrls;
+
+-- J28-minor-a — a user key under another spelling.
+create table public.verify_notes (
+  id       uuid primary key default gen_random_uuid(),
+  owner_id uuid not null
+);
+
+do $probe$
+declare fired boolean := false;
+begin
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then
+    raise exception 'R1 FAILED — an owner_id table with RLS OFF did not block';
+  end if;
+  raise notice 'R1 ok — a renamed user key with RLS off still BLOCKS (default is not exempt)';
+end
+$probe$;
+
+alter table public.verify_notes enable row level security;
+
+do $probe$
+declare k text; b boolean;
+begin
+  select kind, blocking into k, b from private.rls_class_violations()
+   where relid = 'public.verify_notes'::regclass;
+  if k is distinct from 'unclassifiable_protected' or b is distinct from false then
+    raise exception 'R2 FAILED — a protected owner_id table reported as % / blocking=%',
+      coalesce(k, 'NOTHING'), coalesce(b::text, 'NULL');
+  end if;
+  perform private.assert_rls_class_rule();
+  raise notice 'R2 ok — RLS ON: the rule SEES it, reports it, and does not block (J28-minor-a)';
+end
+$probe$;
+
+drop table public.verify_notes;
+
+-- J28-minor-b — a partitioned parent is a table.
+create table public.verify_events (
+  id         uuid not null default gen_random_uuid(),
+  user_id    uuid not null,
+  created_at timestamptz not null default now(),
+  primary key (id, created_at)
+) partition by range (created_at);
+
+create table public.verify_events_p1 partition of public.verify_events
+  for values from ('2026-08-01') to ('2026-09-01');
+
+do $probe$
+declare fired boolean := false;
+begin
+  if not exists (select 1 from private.rls_obligated_tables()
+                  where relid = 'public.verify_events'::regclass) then
+    raise exception 'R3 FAILED — a partitioned table carrying user_id is OUTSIDE the obligation';
+  end if;
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then
+    raise exception 'R3 FAILED — a partitioned table with user_id and RLS OFF did not block';
+  end if;
+  raise notice 'R3 ok — a partitioned parent carrying user_id with RLS off BLOCKS (J28-minor-b)';
+end
+$probe$;
+
+alter table public.verify_events enable row level security;
+
+do $probe$
+begin
+  perform private.assert_rls_class_rule();
+  raise notice 'R4 ok — the CORRECT partitioned layout passes: no false positive on the partitions';
+end
+$probe$;
+
+grant select on public.verify_events_p1 to verify_probe_client;
+
+do $probe$
+declare fired boolean := false;
+begin
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then
+    raise exception 'R5 FAILED — a partition granted directly, with its own RLS off, did not block';
+  end if;
+  raise notice 'R5 ok — enabling RLS on a parent does NOT reach its partitions, and the rule knows';
+end
+$probe$;
+
+alter table public.verify_events_p1 enable row level security;
+
+do $probe$
+begin
+  perform private.assert_rls_class_rule();
+  raise notice 'R6 ok — protecting the partition itself clears it';
+end
+$probe$;
+
+alter table public.verify_events_p1 disable row level security;
+revoke select on public.verify_events_p1 from verify_probe_client;
+grant select on public.verify_events_p1 to verify_probe_bypass;
+
+do $probe$
+begin
+  perform private.assert_rls_class_rule();
+  raise notice 'R7 ok — a grantee that BYPASSES rls is not a hole, and is not reported as one';
+end
+$probe$;
+
+grant select on public.verify_events_p1 to public;
+
+do $probe$
+declare fired boolean := false;
+begin
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then
+    raise exception 'R8 FAILED — a partition granted to PUBLIC did not block';
+  end if;
+  raise notice 'R8 ok — PUBLIC is counted as the worst-case grantee, not skipped as no grantee';
+end
+$probe$;
+
+drop table public.verify_events;
+
+-- R9 — reached by a FOREIGN KEY rather than by a column of its own.
+create table public.verify_owner (
+  id      uuid primary key default gen_random_uuid(),
+  user_id uuid not null
+);
+alter table public.verify_owner enable row level security;
+
+create table public.verify_hits (
+  id        uuid not null default gen_random_uuid(),
+  owner_ref uuid not null references public.verify_owner (id),
+  at        timestamptz not null default now(),
+  primary key (id, at)
+) partition by range (at);
+
+do $probe$
+declare fired boolean := false;
+begin
+  if not exists (select 1 from private.rls_obligated_tables()
+                  where relid = 'public.verify_hits'::regclass) then
+    raise exception 'R9 FAILED — a partitioned FK child of a user table is outside the obligation';
+  end if;
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then raise exception 'R9 FAILED — it did not block'; end if;
+  raise notice 'R9 ok — the obligation reaches a PARTITIONED table through a foreign key chain';
+end
+$probe$;
+
+drop table public.verify_hits;
+drop table public.verify_owner;
+
+-- R10 — a COLUMN grant is a grant. It leaves relacl null and lands in
+-- pg_attribute.attacl, so a table-level reachability test reports the
+-- partition as unreachable while its user column is readable by name.
+create table public.verify_cols (
+  id      uuid not null default gen_random_uuid(),
+  user_id uuid not null,
+  at      timestamptz not null default now(),
+  primary key (id, at)
+) partition by range (at);
+create table public.verify_cols_p1 partition of public.verify_cols
+  for values from ('2026-08-01') to ('2026-09-01');
+alter table public.verify_cols enable row level security;
+grant select (user_id) on public.verify_cols_p1 to verify_probe_client;
+
+do $probe$
+declare fired boolean := false;
+begin
+  if (select relacl is not null from pg_class where oid = 'public.verify_cols_p1'::regclass) then
+    raise exception 'R10 FAILED — the premise is wrong: a column grant DID write relacl';
+  end if;
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true;
+  end;
+  if not fired then
+    raise exception 'R10 FAILED — a COLUMN grant on an unpoliced partition was not seen';
+  end if;
+  raise notice 'R10 ok — a column grant counts as reachable, though relacl stays null';
+end
+$probe$;
+
+drop table public.verify_cols;
 
 -- L6 — the rule holds over the whole schema, not just these two tables.
 select private.assert_rls_class_rule();

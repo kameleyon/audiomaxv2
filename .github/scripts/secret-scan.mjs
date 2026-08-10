@@ -103,8 +103,40 @@ const RULES = [
   // of the value itself. Requiring BOTH cases AND a digit is what keeps this off
   // hex digests (lowercase only — every SHA-256 in this repo's manifests) and
   // off the base32/uppercase constants that appear in fixtures.
-  ['bare-credential-token', /(?<![A-Za-z0-9_/+-])(?=[A-Za-z0-9]{28,48}(?![A-Za-z0-9]))(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{28,48}/g,
-    'a bare token shaped like a generated credential — 28-48 chars, mixed case, with digits'],
+  //
+  // ── J29-m1, THREE GAPS, ALL OF THEM CLOSED HERE ────────────────────────
+  //
+  //  1. THE 48-CHARACTER CAP. `{28,48}` refused anything longer, so a 64-char
+  //     generated token walked through the rule written for generated tokens.
+  //     The cap was there to keep the rule off lowercase hex digests, and it
+  //     was never needed for that: the `[a-z]` + `[A-Z]` + `\d` conjunction
+  //     already excludes them, because hex has no uppercase in this repository
+  //     and no letter past `f` anywhere. The floor stays; the ceiling goes.
+  //
+  //  2. THE LOOKBEHIND. `(?<![A-Za-z0-9_/+-])` excluded `_` and `-`, which are
+  //     exactly the separators vendors put in front of the random part:
+  //     `ghp_` + 36 and `glpat-` + 20 could not start a match. It is now
+  //     `(?<![A-Za-z0-9])` — a match may begin after a separator, which is
+  //     where credentials begin. (`glpat-` + 20 is 20 characters and below the
+  //     floor even so; `vcs-personal-access-token` below is what reaches it,
+  //     because a vendor prefix is evidence a bare 20-char run is not.)
+  //
+  //  3. TWO RULES FOR ONE PROPERTY, FIXED ON ONE SIDE. `KEYLIKE` was widened
+  //     to accept lowercase-and-digits BECAUSE ONE OF THE FOUR REAL KEYS HAS
+  //     NO UPPERCASE LETTER, and this rule went on requiring `[A-Z]`. So the
+  //     shape that motivated the other half's widening was still invisible
+  //     here. The alternation below admits a lowercase-and-digits run when it
+  //     contains a letter OUTSIDE the hex alphabet — which is what separates a
+  //     generated credential from the SHA-256 and SHA-1 digests and the UUIDs
+  //     this repository's manifests and fixtures are full of. Those stay
+  //     negative trials, and they still pass.
+  ['bare-credential-token', /(?<![A-Za-z0-9])(?=[A-Za-z0-9]{28,}(?![A-Za-z0-9]))(?=[A-Za-z0-9]*\d)(?:(?=[A-Za-z0-9]*[a-z])(?=[A-Za-z0-9]*[A-Z])|(?=[A-Za-z0-9]*[g-z]))[A-Za-z0-9]{28,}/g,
+    'a bare token shaped like a generated credential — 28+ chars with digits, either mixed case or lowercase outside the hex alphabet'],
+  // A vendor PREFIX is the evidence that lets the length floor come down. None
+  // of these prefixes occurs by accident, so a 20-character random tail behind
+  // one is a credential, where a bare 20-character run is a base64 fragment.
+  ['vcs-personal-access-token', /\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20,})/g,
+    'a GitHub or GitLab personal access token'],
   // The carrier syntax that has no variable name at all.
   ['bearer-literal', /\b(?:Bearer|Basic|Token)\s+["'`]?([A-Za-z0-9_\-.=+/]{20,})/g,
     'a literal credential in an Authorization-style header'],
@@ -290,7 +322,16 @@ function scan({ cwd = process.cwd(), scanUntracked = false } = {}) {
     });
   }
 
-  return { findings, fileCount: targets.length };
+  // J30-p1 — the summary has to describe the mode, so the counts are split at
+  // the source rather than recomputed by the caller. Reported separately
+  // because they answer different questions: `indexCount` is what a commit
+  // would carry, `diskCount` is what only this machine can see.
+  return {
+    findings,
+    fileCount: targets.length,
+    indexCount: targets.filter((t) => t.fromIndex).length,
+    diskCount: targets.filter((t) => !t.fromIndex).length,
+  };
 }
 
 // ── Self-test ────────────────────────────────────────────────────────────
@@ -316,6 +357,21 @@ function selfTest() {
     // scanning its own source is the property that keeps it honest, so the
     // specimen bends and the rule does not.
     lemonfox: 'aB3dE6gH9jK2' + 'mN5pQ8sT1vW4' + 'yZ7cX0fU',
+    // ── J29-m1 specimens. Split for the reason above, and the floor moved:
+    // `bare-credential-token` no longer stops at 48 characters and no longer
+    // demands an uppercase letter, so ANY alphanumeric literal of 28+ in this
+    // source now matches the shipped rule and this scanner catches its own
+    // file. That is the property that keeps it honest — it caught the
+    // `a1b2c3…` specimen below on the first run of this very widening — so
+    // every specimen is assembled at runtime and no chunk reaches 28.
+    long64: 'aB3dE6gH9jK2mN5' + 'pQ8sT1vW4yZ7cX0fU' + 'iL4oR7uY0aD3fG6' + 'hJ9kM2nP5qS8tV1wX',
+    ghp: 'ghp' + '_' + 'aB3dE6gH9jK2mN5pQ' + '8sT1vW4yZ7cX0fU1iL4',
+    glpat: 'glpat' + '-' + 'aB3dE6gH9jK2mN5pQ8sT',
+    // 40 characters, lowercase and digits, letters past `f` — a generated
+    // credential, not a digest. The distinction the rule now draws.
+    lower40: 'k9m2p5q8t1w4z7c0f3j' + '6n9r2u5x8a1d4g7j0m3p6',
+    // The KEYLIKE-parity specimen, split for the same reason.
+    lowerNamed: 'a1b2c3d4e5f6g7h8' + 'j9k0m1n2p3q4r5s6',
   };
 
   const trials = [
@@ -358,7 +414,7 @@ function selfTest() {
     // of the four real keys has no uppercase letter. This asserts the rule list
     // agrees with it, so the two halves cannot drift apart again (J29-m1).
     ['a lowercase-and-digits credential is caught (KEYLIKE parity)',
-      'auth = "' + 'a1b2c3d4e5f6g7h8j9k0m1n2p3q4r5s6' + '"\n', true],
+      `auth = "${K.lowerNamed}"\n`, true],
     // J30-M3 — the five shapes the first narrowing dropped. All are HUMAN-CHOSEN
     // secrets, which is what `password`/`passwd`/`secret`/`auth` in the name
     // alternation are for, and all contain punctuation a vendor key never would.
@@ -372,6 +428,32 @@ function selfTest() {
       'auth = "admin' + ':sup3rl0ngpassw0rdvalue"\n', true],
     ['a percent-encoded client secret is caught',
       'client_secret: "x9K' + '%2FvB8nQ4mZ7wL3pT6"\n', true],
+    // ── J29-m1 — one trial per shape `bare-credential-token` used to miss.
+    // Every one of these is a real vendor's real format, planted with NO
+    // variable name, so only the value-shape rule can see it.
+    // (1) THE CAP. 64 characters, mixed case, digits — a generated token that
+    // the `{28,48}` ceiling refused for being too long to be a credential.
+    ['a 64-char mixed-case token is caught (the {28,48} cap is gone)',
+      `curl -H "X-Key: ${K.long64}"\n`, true],
+    // (2) THE LOOKBEHIND. `_` and `-` were in the exclusion class, so a match
+    // could not begin after the separator every vendor puts there.
+    ['a GitHub PAT (ghp_ + 36) is caught — the lookbehind excluded `_`',
+      `the token is ${K.ghp}\n`, true],
+    ['a GitLab PAT (glpat- + 20) is caught — the lookbehind excluded `-`',
+      `GITLAB=${K.glpat}\n`, true],
+    // (3) KEYLIKE PARITY, THE BARE HALF. `KEYLIKE` accepts lowercase-and-digits
+    // because one of the four real keys has no uppercase letter; this rule
+    // still demanded `[A-Z]`. 40 characters, lowercase, digits, no name.
+    ['a 40-char lowercase-and-digits token is caught with NO name at all',
+      `curl -H "X-Api: ${K.lower40}"\n`, true],
+    // …and the negatives that widening could have broken. A 40-char lowercase
+    // hex run is a git object id and appears throughout this repository; a
+    // 64-char one is a SHA-256 and appears in every manifest. Neither has a
+    // letter past `f`, and that is the whole distinction the rule draws.
+    ['a 40-char lowercase hex digest (a git object id) survives',
+      '"commit": "' + hex(40) + '"\n', false],
+    ['a 64-char UPPERCASE hex digest survives',
+      '"SHA": "' + hex(64).toUpperCase() + '"\n', false],
   ];
 
   const root = mkdtempSync(join(tmpdir(), 'secret-scan-selftest-'));
@@ -466,16 +548,27 @@ function selfTest() {
 // ── Main ─────────────────────────────────────────────────────────────────
 if (process.argv.includes('--self-test')) selfTest();
 
-const result = scan({ cwd: process.cwd(), scanUntracked: process.argv.includes('--all') });
+const scanUntracked = process.argv.includes('--all');
+const result = scan({ cwd: process.cwd(), scanUntracked });
 if (result === null) {
   console.error('secret-scan: not a git repository (or git is unavailable).');
   process.exit(2);
 }
-const { findings, fileCount } = result;
+const { findings, fileCount, indexCount, diskCount } = result;
+
+// J30-p1 — the summary must describe the MODE IT RAN IN. `--all` reads
+// untracked files FROM DISK and the line said "FROM THE INDEX" regardless, so
+// the one sentence a reader uses to know which bytes were examined was wrong in
+// exactly the mode where the answer is "both". The gate mode still says only
+// what it does: it reads the index and nothing else.
+const SOURCE_SUMMARY = scanUntracked
+  ? `${indexCount} tracked file(s) FROM THE INDEX + ${diskCount} untracked FROM DISK ` +
+    `(--all is a local sweep, not the gate: an untracked file has no staged blob)`
+  : `${fileCount} file(s) scanned FROM THE INDEX`;
 
 if (!findings.length) {
   console.log('secret-scan: clean — 0 findings');
-  console.log(`  ${fileCount} file(s) scanned FROM THE INDEX · ${RULES.length} content rules · ` +
+  console.log(`  ${SOURCE_SUMMARY} · ${RULES.length} content rules · ` +
     `${MUST_BE_IGNORED.length} ignore rules asked of git directly`);
   console.log('  values are never printed; findings name the file, the line and the rule');
   console.log('  run --self-test to prove the rules fire');

@@ -82,8 +82,8 @@
 
 # ── API surface and clients ──────────────────────────────────────────────────
 /openapi/                       Nexus  Scribe
-/apps/web/                      Arch  Vega  Halo  Optic  # frontend/arch.md owns the structure, frontend/vega.md the components; audit/halo.md WCAG 2.2 AA; audit/optic.md UX. J28-M5: this read `Halo Optic` — two AUDIT-layer agents owning code with NO author, which makes the reviewer the writer and there is then nobody left to review.
-/apps/mobile/                   Touch  Halo  Optic  # frontend/touch.md builds it; TalkBack and VoiceOver/iOS live here, so Halo is a co-owner and not a reviewer-of-record
+/apps/web/                      Arch  Vega  Access  Prism  Halo  Optic  # frontend/arch.md structure · frontend/vega.md components · frontend/access.md WRITES the accessibility (semantics, focus order, live regions) · frontend/prism.md performance budgets · audit/halo.md AUDITS WCAG 2.2 AA · audit/optic.md UX. J29-m2: `grep -c "Access\|Prism" CODEOWNERS` returned 0 while CLAUDE.md said "Halo audits accessibility; Access builds it" — so the auditor was the only accessibility owner on the path, which is the collapse that sentence forbids, on the population CLAUDE.md calls primary. J28-M5: this read `Halo Optic` — two AUDIT-layer agents owning code with NO author, which makes the reviewer the writer and there is then nobody left to review.
+/apps/mobile/                   Touch  Access  Halo  Optic  # frontend/touch.md builds the app; frontend/access.md owns the TalkBack and VoiceOver/iOS semantics it exposes; audit/halo.md audits them and does not write them (J29-m2); audit/optic.md UX
 
 
 # ── Money ────────────────────────────────────────────────────────────────────

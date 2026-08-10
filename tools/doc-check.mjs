@@ -85,6 +85,89 @@ const ROUNDS_ON_DISK = existsSync('resources/audits')
   : 0;
 
 const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
+
+// ── THE INDEX, NOT THE DISK (J29-m4) ─────────────────────────────────────
+// `git commit` writes the INDEX. Three checks in this file asked the DISK:
+// [COST] read `spike-a-results.json` with `readFileSync`, [TREE-MARKER]
+// decided `present` with `existsSync`, and `loadArtifacts()` enumerated the
+// artifact directory with `readdirSync`. That is J28-C1's shape — the Critical
+// whose subject was four live API keys — surviving in the SECOND gate,
+// contained only by [STAGED], which is blind to a GITIGNORED divergence.
+//
+// Which is exactly how J29-M4 hid. `*-gt.wav` / `*-gtlong.wav` are on this
+// disk and in no clone, so the manifest leg passed here and went red on every
+// checkout. A guard that reads a file the commit does not carry is measuring
+// the wrong repository.
+//
+// ONE object answers both questions a check can ask of a path — is it in the
+// index, and what bytes would a commit write — and `--self-test` injects a
+// substitute for it, so "reads the index" is falsifiable rather than asserted.
+//
+// Git absence is a DEGRADED MODE, not a silent equivalence: the object says
+// so in `mode`, and the run summary prints it (constraint 2 — a degraded path
+// must be visible and announceable when it engages).
+function makeIndex() {
+  let files = null;
+  try {
+    files = execFileSync('git', ['ls-files', '-z'],
+      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
+      .split('\0').map((s) => s.trim()).filter(Boolean);
+  } catch { files = null; }
+  if (files === null) {
+    // No git. Read the working tree and SAY SO — see the note above.
+    return {
+      mode: 'worktree',
+      // No index means no tracked-file list. [WS-OWNED] treats an empty list as
+      // a finding rather than as "nothing to own", which is the correct read.
+      files: null,
+      has: (p) => existsSync(p) && statSync(p).isFile(),
+      hasPath: (p) => existsSync(p) && (statSync(p).isFile() || readdirSync(p).length > 0),
+      listDir: (p) => (existsSync(p) ? readdirSync(p) : []),
+      read: (p) => (existsSync(p) ? readFileSync(p) : null),
+    };
+  }
+  return indexFromFiles(files);
+}
+// Split out so `--self-test` can build a SUBSTITUTE index over a named subset
+// and run the shipped checks against it. Without this, "reads the index" is a
+// sentence in a comment.
+function indexFromFiles(files) {
+  const set = new Set(files);
+  return {
+    mode: 'index',
+    files,
+    has: (p) => set.has(p),
+    // A DIRECTORY is present when the index carries at least one file under
+    // it. `git` stores no directories, so this is the only definition there is.
+    hasPath: (p) => set.has(p) || files.some((f) => f.startsWith(`${p}/`)),
+    // IMMEDIATE children only, so this matches what `readdirSync` returned.
+    // Recursing would have pulled `gt/words/en/000-dr.wav` into the artifact
+    // `wavs` map, which readdirSync never did.
+    listDir: (p) => {
+      const out = new Set();
+      for (const f of files) {
+        if (!f.startsWith(`${p}/`)) continue;
+        out.add(f.slice(p.length + 1).split('/')[0]);
+      }
+      return [...out];
+    },
+    // A path the index does not carry HAS no staged blob, and saying so is the
+    // point: it is what a clone would find, which is what the gate is about.
+    read: (p) => {
+      if (!set.has(p)) return null;
+      try {
+        return execFileSync('git', ['show', `:${p}`],
+          { maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+      } catch { return null; }   // staged as a deletion, or a gitlink
+    },
+  };
+}
+const INDEX = makeIndex();
+// The index minus everything matching `re` — a substitute for a trial that has
+// to prove a check consults the index rather than the working tree, by removing
+// a path that is unambiguously present on this disk.
+const indexWithout = (re) => indexFromFiles((INDEX.files ?? []).filter((f) => !re.test(f)));
+
 const lineOf = (t, i) => t.slice(0, i).split('\n').length;
 const section = (t, from, to) => {
   const s = t.search(from);
@@ -98,25 +181,31 @@ const section = (t, from, to) => {
 // document's claim that SPIKE A "returns" a metric be checked against a file
 // that returns it; `wavs` is what lets a result be checked against the audio it
 // says it scored, on a fresh clone, where no mtime survives (J26-M5).
-function loadArtifacts() {
-  const out = { files: {}, keys: new Set(), wavs: {}, present: false };
-  if (!existsSync(ARTIFACT_DIR)) return out;
+//
+// J29-m4: enumerated and read FROM THE INDEX. On this disk the gitignored
+// `*-gt.wav` still exist, so reading the disk hashed audio no clone has —
+// which is how J29-M4 passed here and went red on every checkout.
+function loadArtifacts(index = INDEX) {
+  const out = { files: {}, keys: new Set(), wavs: {}, present: false, mode: index.mode };
   const walk = (v) => {
     if (Array.isArray(v)) return v.forEach(walk);
     if (v && typeof v === 'object') {
       for (const [k, x] of Object.entries(v)) { out.keys.add(k); walk(x); }
     }
   };
-  for (const f of readdirSync(ARTIFACT_DIR)) {
+  for (const f of index.listDir(ARTIFACT_DIR)) {
     const p = `${ARTIFACT_DIR}/${f}`;
     if (f.endsWith('.wav')) {
-      const buf = readFileSync(p);
+      const buf = index.read(p);
+      if (!buf) continue;
       out.wavs[f] = { sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
       continue;
     }
     if (!f.endsWith('.json')) continue;
+    const buf = index.read(p);
+    if (!buf) continue;
     try {
-      const data = JSON.parse(readFileSync(p, 'utf8'));
+      const data = JSON.parse(buf.toString('utf8'));
       out.files[f] = { data };
       out.present = true;
       walk(data);
@@ -167,12 +256,39 @@ function configurations(art, key) {
 
 // Every object in an artifact that carries both a language and the duration of
 // the audio it scored. That pair is the provenance link [ART-STALE] checks.
+//
+// ── J30-M7 — THE ADMISSION RULE, NOT THE RESOLUTION RULE ──────────────────
+// Round 30 repaired leg (iii) so it resolves an explicit `audio_path`. The
+// repair was UNREACHABLE: this function admitted a row only on `lang` +
+// `audio_seconds`, and the only rows in the repository carrying `audio_path`
+// — the nine per-(lang, voice) clips in `spike-a-voices.json` — spell those
+// two fields `lang_code` and `clip_seconds`. Zero of 39 rows could take the
+// new branch. Jury: *"there is no live data defect — only a guard that does
+// not guard."* The fix belongs HERE, in what is admitted, not in leg (iii)
+// again: a third edit to the resolution rule would have been the fourth round
+// of fixing the artifact where the finding was raised rather than the one that
+// implements it.
+//
+// The aliases are the field names the artifacts actually emit, and the row is
+// NORMALISED on the way out so leg (iii) reads one vocabulary. Widening the
+// admission rule is a LOOSENING — more rows now face the duration check — and
+// it is falsified by a mutation per alias in `--self-test`, not asserted.
+const LANG_KEYS = ['lang', 'lang_code'];
+const SECONDS_KEYS = ['audio_seconds', 'clip_seconds'];
 function scoredRows(data) {
   const rows = [];
+  const pick = (v, keys, type) => {
+    for (const k of keys) if (typeof v[k] === type) return v[k];
+    return null;
+  };
   const walk = (v) => {
     if (Array.isArray(v)) return v.forEach(walk);
     if (v && typeof v === 'object') {
-      if (typeof v.lang === 'string' && typeof v.audio_seconds === 'number') rows.push(v);
+      const lang = pick(v, LANG_KEYS, 'string');
+      const seconds = pick(v, SECONDS_KEYS, 'number');
+      if (lang !== null && seconds !== null) {
+        rows.push({ lang, audio_seconds: seconds, audio_path: v.audio_path });
+      }
       for (const x of Object.values(v)) walk(x);
     }
   };
@@ -411,9 +527,16 @@ const CONTROLS = [
     note: 'governs displayed text only, never synthesized speech' },
 ];
 
-// Read once at startup. `runChecks` takes an override so --self-test can run the
-// shipped artifact guards over a synthetic artifact set.
-const ARTIFACTS = loadArtifacts();
+// Read once per index. `runChecks` takes an `artifacts` override so --self-test
+// can run the shipped artifact guards over a synthetic artifact set, and an
+// `index` override so the SHIPPED loader can be run over a substituted index —
+// which is the only way to falsify "it reads the index, not the disk" (J29-m4).
+const _artifactCache = new Map();
+function artifactsFor(index) {
+  if (!_artifactCache.has(index)) _artifactCache.set(index, loadArtifacts(index));
+  return _artifactCache.get(index);
+}
+const ARTIFACTS = artifactsFor(INDEX);
 
 // [ART-FIGURE] abstains where prose binds a number to no metric unambiguously.
 // Counted and printed, never silent: a check that quietly examines nothing is
@@ -541,8 +664,12 @@ const EXTRA_TRIALS = [
   // The vendor side: break the arithmetic that makes the ~25x comparison mean anything.
   ['COST', 'readme', (t) => t.replace(/\$0\.01\/min is \$5\.40/, '$0.01/min is $2.40')],
   // ── J28-M5 (a): hand a runtime path back to auditors only.
+  // Anchored on the PATH and the line, not on the owner run: the previous form
+  // named `Arch Vega Halo Optic` literally, and the round that added `Access`
+  // and `Prism` (J29-m2) turned this specimen into a silent no-op. A trial
+  // whose text tracks the file it mutates is a trial that dies of a correct fix.
   ['WS-OWNED', 'codeowners', (t) => t.replace(
-    /\/apps\/web\/\s+Arch\s+Vega\s+Halo\s+Optic/, '/apps/web/                      Halo  Optic')],
+    /^(\/apps\/web\/\s+)[^\n]*$/m, '$1Halo  Optic')],
   // ── J28-M5 (b): drop the scanner's owner so it falls to the `*` catch-all.
   ['WS-OWNED', 'codeowners', (t) => t.replace(
     /\/\.github\/scripts\/\s+Vault\s+Forge[^\n]*\n/, '')],
@@ -597,6 +724,116 @@ const EXTRA_TRIALS = [
   // ── J22-M6, second half — a brand-new top-level directory, which the old
   // allowlist could not see on the day it was created.
   ['STAGED', null, null, { injectedGitFiles: ['worker/src/queue/render.ts'] }],
+
+  // ── J30-M7 — THE ADMISSION RULE. Round 30's leg (iii) repair resolved an
+  // explicit `audio_path` and NOTHING COULD REACH IT: `scoredRows` admitted a
+  // row only on `lang` + `audio_seconds`, and the only rows carrying
+  // `audio_path` spell them `lang_code` + `clip_seconds`. Zero of 39 rows.
+  // These two are the trials that repair could not have passed, which is why
+  // it shipped unreachable — a loosening with no specimen is an assertion.
+  //
+  // (a) THE ALIAS. A per-(lang, voice) row in the vocabulary
+  // `spike-a-voices.json` actually emits, scoring a duration the manifest
+  // contradicts. Invisible to the previous admission rule.
+  ['ART-STALE', null, null, {
+    artifacts: SYNTH({
+      files: {
+        'tts-manifest.json': { data: [
+          { path: 'en.wav', sha256: 'aaaa', bytes: 4, seconds: 11.63 },
+          { path: 'fr-long-locked-r1.wav', sha256: 'bbbb', bytes: 5, seconds: 357.2 },
+        ] },
+        'voices.json': { data: { clips: [
+          { lang_code: 'fr', clip_seconds: 9.99, audio_path: 'fr-long-locked-r1.wav' },
+        ] } },
+      },
+      wavs: { 'en.wav': { sha256: 'aaaa', bytes: 4 },
+        'fr-long-locked-r1.wav': { sha256: 'bbbb', bytes: 5 } },
+    }),
+  }],
+  // (b) THE RESOLUTION. The same aliased row naming audio the manifest does
+  // not describe at all. `${lang}.wav` would have resolved this to `fr.wav`
+  // and found it — the wrong file, silently — so this trial is also what
+  // proves the resolution uses the path the row states.
+  ['ART-STALE', null, null, {
+    artifacts: SYNTH({
+      files: { 'voices.json': { data: { clips: [
+        { lang_code: 'fr', clip_seconds: 357.2, audio_path: 'fr-long-locked-r1.wav' },
+      ] } } },
+    }),
+  }],
+  // ── J30-m2 — THE `reconstructible_from` ACCEPTANCE BRANCH, which shipped
+  // with no trial at all. It is a LOOSENING: it lets a manifest row name audio
+  // that is in no clone. Both conditions it rests on are falsified here, so the
+  // escape cannot be taken by assertion.
+  // (a) the named source directory is not in the repository.
+  ['ART-STALE', null, null, {
+    artifacts: SYNTH({ files: { 'tts-manifest.json': { data: [
+      { path: 'en.wav', sha256: 'aaaa', bytes: 4, seconds: 11.63 },
+      { path: 'en-gt.wav', sha256: 'cccc', bytes: 9, seconds: 20.75,
+        reconstructible_from: 'no-such-directory/' },
+    ] } } }),
+  }],
+  // (b) the directory is real and the row carries NO sha256, so the rebuild is
+  // unverifiable — "a reconstruction nobody can verify is an absence with a
+  // label on it", asserted by the message and now proven by execution.
+  ['ART-STALE', null, null, {
+    artifacts: SYNTH({ files: { 'tts-manifest.json': { data: [
+      { path: 'en.wav', sha256: 'aaaa', bytes: 4, seconds: 11.63 },
+      { path: 'en-gt.wav', bytes: 9, seconds: 20.75, reconstructible_from: 'gt/words/en/' },
+    ] } } }),
+  }],
+
+  // ── J29-m3(a) — THE ESCAPE THAT WAS NOT ONE. `'\.'` is `'.'`, so a literal
+  // CODEOWNERS pattern compiled with `.` as a WILDCARD. Inject a tracked path
+  // that the wildcard claims and the literal does not: under the old code it
+  // reads as owned by Forge and nothing fires; under the escape it falls to the
+  // `*` catch-all, which is a finding. The trial is self-contained — it adds
+  // its own rule rather than borrowing one CODEOWNERS happens to carry today.
+  ['WS-OWNED', null, null, {
+    injectedTrackedFiles: ['tools/xAy.mjs'],
+    docs: { codeowners: (t) => `${t}\n/tools/x.y.mjs                  Forge\n` },
+  }],
+  // ── J29-m3(b) — A NEW AUDIT PERSONA. The layer set was the literal
+  // {Jury, Halo, Proof, Optic}, so a roster addition escaped leg (b) in
+  // silence. Add one to CLAUDE.md's roster and hand it a runtime file: the
+  // harvested version sees an auditor owning code with no author; the hardcoded
+  // version sees a name it has never heard of and says nothing.
+  ['WS-OWNED', null, null, {
+    injectedTrackedFiles: ['worker/src/render.ts'],
+    docs: {
+      claude: (t) => t.replace(/^(\|[^\n]*`audit\/[a-z]+\.md`[^\n]*)$/m,
+        '$1\n| Copy audit | **Verso** | `audit/verso.md` |'),
+      codeowners: (t) => `${t}\n/worker/src/render.ts            Verso\n`,
+    },
+  }],
+
+  // ── The decomposition metrics, which `TRACKED` did not carry. Six published
+  // figures were guarded by nothing. A figure attributed to the tolerant metric
+  // that no configuration produces must now go red — and against the previous
+  // TRACKED list it could not, because the key was not in it.
+  ['ART-FIGURE', 'readme', (t) =>
+    `${t}\n\n\`matched_within_drift_pct_silence_tolerant\` reads 11.1 on this corpus.\n`],
+  ['ART-FIGURE', 'readme', (t) =>
+    `${t}\n\nAfter the clock correction the offset-corrected figure is 11.2%.\n`],
+
+  // ── J29-m4 — THE INDEX, NOT THE DISK. Each of these removes from the index a
+  // path that unmistakably EXISTS in this working tree. A check reading the
+  // disk cannot go red on any of them; a check reading the index must.
+  // (a) [TREE-MARKER]: `worker/` is marked `present` in README and is on this
+  // disk. Drop it from the index and the claim is false for every clone.
+  ['TREE-MARKER', null, null, {
+    index: indexWithout(/^worker\//), artifacts: ARTIFACTS,
+  }],
+  // (b) [COST]: the artifact the range is recomputed from is on this disk.
+  // Unstaged, a commit carries no such file and the claim is uncheckable.
+  ['COST', null, null, {
+    index: indexWithout(/spike-a-results\.json$/), artifacts: ARTIFACTS,
+  }],
+  // (c) loadArtifacts(): the whole measurement directory is on this disk. If
+  // the loader still enumerated it with readdirSync this stays green, which is
+  // J29-M4's shape exactly — the gitignored `*-gt.wav` were read here and were
+  // in no clone.
+  ['ART-ABSENT', null, null, { index: indexWithout(/^aligner\/spike-a\/out\//) }],
 ];
 const TRIAL_COUNT = BANNED.length + INVARIANTS.length + STRUCTURAL.length + EXTRA_TRIALS.length;
 
@@ -606,7 +843,11 @@ function runChecks(src, opts = {}) {
   ABSTENTIONS.clear();
   const add = (severity, check, doc, line, message) =>
     out.push({ severity, check, doc, line, message, id: message.match(/\[([\w-]+)\]/)?.[1] });
-  const art = opts.artifacts ?? ARTIFACTS;
+  // J29-m4 — every filesystem question below goes through this object, and
+  // `--self-test` substitutes it. A guard that reads the index is only proven
+  // to read the index by an injected index that disagrees with the disk.
+  const index = opts.index ?? INDEX;
+  const art = opts.artifacts ?? artifactsFor(index);
 
   const schemaText = section(src.spec, /^#+\s*7\.\s*Data model/m, /^#+\s*8\./m);
   const phase1 = section(src.roadmap, /^##\s*Phase 1/m, /^##\s*Phase 2/m);
@@ -1320,8 +1561,13 @@ function runChecks(src, opts = {}) {
       const rel = token.replace(/\/$/, '');
       const full = nested && lastTop ? `${lastTop}/${rel}` : rel;
       if (!nested) lastTop = rel;
-      const exists = existsSync(full) &&
-        (statSync(full).isFile() || readdirSync(full).length > 0);
+      // J29-m4 — asked of the INDEX. `present` is a claim about what a clone
+      // gets, not about what is lying in this working directory: a gitignored
+      // build output made the tree look truthful to its author and to nobody
+      // else. `hasPath` is true for a tracked file OR a directory the index
+      // carries at least one file under, which is the only definition of a
+      // present directory git has.
+      const exists = index.hasPath(full);
       if (marker === 'present' && !exists) {
         add('MAJOR', 'tree-marker', 'readme', i + 1,
           `[TREE-MARKER] README marks \`${full}\` as \`present\` and it does not exist ` +
@@ -1354,12 +1600,15 @@ function runChecks(src, opts = {}) {
   // accuracy figures is exactly the mixed-model defect J26-C2 found in the
   // published triple.
   {
-    const NL = String.fromCharCode(10);
     const COST_ARTIFACT = 'aligner/spike-a/out/spike-a-results.json';
     let lo = null, hi = null;
-    if (existsSync(COST_ARTIFACT)) {
+    // J29-m4 — read FROM THE INDEX, the bytes a commit would write. This used
+    // `readFileSync`, so an unstaged edit to the artifact could reconcile a
+    // cost claim that the commit would not carry.
+    const costBuf = index.read(COST_ARTIFACT);
+    if (costBuf) {
       try {
-        const raw = JSON.parse(readFileSync(COST_ARTIFACT, 'utf8'));
+        const raw = JSON.parse(costBuf.toString('utf8'));
         const rows = Array.isArray(raw) ? raw : (raw.results || []);
         const c = rows.map((r) => r && r.compute_cost_per_audio_hour_usd).filter((n) => typeof n === 'number');
         if (c.length) { lo = Math.min(...c) * 9; hi = Math.max(...c) * 9; }
@@ -1418,7 +1667,34 @@ function runChecks(src, opts = {}) {
   // unsupported pattern is why a file looks owned when it is not.
   {
     const NL = String.fromCharCode(10);
-    const AUDIT_LAYER = new Set(['Jury', 'Halo', 'Proof', 'Optic']);
+    // ── J29-m3(b) — HARVESTED, NOT AUTHORED ────────────────────────────────
+    // This was the literal set {Jury, Halo, Proof, Optic}, so a new audit
+    // persona escaped leg (b) in silence: the roster gains a reviewer,
+    // CODEOWNERS hands it a code file, and the file has an auditor and no
+    // author while this guard reports nothing. CLAUDE.md is the declared
+    // authority for the roster ("The commit gate, constraints, agent roster"),
+    // and a guard whose vocabulary is a private copy of an authoritative list
+    // is the same defect this whole file exists to catch, one level up.
+    //
+    // The roster is a table: `| need | **Name** | `layer/file.md` |`. A persona
+    // is audit-layer when its path names the `audit/` layer — the directory IS
+    // the layer, per CLAUDE.md's own "Personas live at agents/<layer>/<name>".
+    // A row may name two personas (`**Shield**, **Cipher**`), so every bolded
+    // name in the agent cell is taken.
+    const AUDIT_LAYER = new Set();
+    for (const m of (src.claude || '').matchAll(/^\|[^|\n]*\|([^|\n]*)\|\s*`([a-z]+)\/[^`]*`\s*\|/gm)) {
+      if (m[2] !== 'audit') continue;
+      for (const n of m[1].matchAll(/\*\*([A-Z][A-Za-z]*)\*\*/g)) AUDIT_LAYER.add(n[1]);
+    }
+    if (!AUDIT_LAYER.size) {
+      // [HARVEST] doctrine: a parse that returns nothing is a broken parse, not
+      // an empty roster. Leg (b) below is vacuous without this set, and a
+      // vacuous check that reports nothing is what round 26 was about.
+      add('MAJOR', 'ws-owned', 'claude', 0,
+        '[WS-OWNED] harvested ZERO audit-layer personas from CLAUDE.md\'s roster table, so the ' +
+        '"owned only by auditors" leg checks nothing. Either the roster lost its `audit/` rows ' +
+        'or this parse broke; both are findings.');
+    }
     const CODE = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|sql|sh)$/i;
     const coText = src.codeowners || '';
     const rules = [];
@@ -1432,7 +1708,13 @@ function runChecks(src, opts = {}) {
       if (pat === '*') re = /^/;
       else if (pat.startsWith('**/')) re = new RegExp(`(?:^|/)${pat.slice(3).replace(/\/$/, '')}/`);
       else if (pat.startsWith('/') && pat.endsWith('/')) re = new RegExp(`^${pat.slice(1)}`);
-      else if (pat.startsWith('/')) re = new RegExp(`^${pat.slice(1).replace(/[.]/g, '\.')}$`);
+      // J29-m3(a) — `'\.'` in a normal JS string IS `'.'`, so this replace was
+      // a NO-OP and every literal pattern compiled with `.` as a WILDCARD:
+      // `/eslint.config.mjs` claimed `eslintXconfig.mjs`. A file can therefore
+      // read as owned by a rule that was never written about it — which is the
+      // exact failure [WS-OWNED] exists to report, produced by [WS-OWNED].
+      // `\\.` is the escape; `'\.'` was a typo that looked like one.
+      else if (pat.startsWith('/')) re = new RegExp(`^${pat.slice(1).replace(/[.]/g, '\\.')}$`);
       else { unsupported++; continue; }
       rules.push({ pat, re, owners });
     }
@@ -1442,11 +1724,9 @@ function runChecks(src, opts = {}) {
         `implement, so the files they cover are UNCHECKED. An unsupported pattern reads as ` +
         `ownership and provides none; either simplify the pattern or extend this matcher.`);
     }
-    let tracked = [];
-    try {
-      tracked = execSync('git ls-files', { encoding: 'utf8' }).split(NL)
-        .map((x) => x.trim()).filter(Boolean);
-    } catch { /* handled below */ }
+    // The same INDEX every other check reads (J29-m4), and injectable, so the
+    // pattern matcher above can be falsified against a named path.
+    const tracked = opts.injectedTrackedFiles ?? [...(index.files ?? [])];
     if (!tracked.length) {
       add('MAJOR', 'ws-owned', 'codeowners', 0,
         '[WS-OWNED] could not list tracked files, so ownership was not checked at all.');
@@ -1566,6 +1846,15 @@ function runChecks(src, opts = {}) {
       { key: 'p95_drift_ms', alias: /p95 drift/i },
       { key: 'median_abs_error_ms', alias: /median abs(?:olute)? error/i },
       { key: 'p95_abs_error_ms', alias: /p95 abs(?:olute)? error/i },
+      // ── The decomposition metrics (filed by Scribe with the round-30 fix) ──
+      // `groundtruth.py` emits a three-step decomposition — strict, then
+      // tolerant of the silence the construction itself inserted, then
+      // corrected for the ASR's constant clock offset — and three documents
+      // now quote all six of the derived figures. NEITHER KEY WAS TRACKED, so
+      // every one of them was guarded by nothing: J26-M3's shape, in the six
+      // newest numbers in the repository.
+      { key: 'matched_within_drift_pct_silence_tolerant', alias: /silence[ -]tolerant/i },
+      { key: 'matched_within_drift_pct_after_offset', alias: /offset[ -]corrected/i },
     ];
     // The declared bars and bounds. They are targets stated beside a measurement,
     // never a measurement, and they are declared HERE rather than discovered so
@@ -1604,12 +1893,26 @@ function runChecks(src, opts = {}) {
       // 1. Where each metric is MENTIONED — by identifier or in prose. The two
       // kinds bind differently, because they carry different evidence that the
       // number beside them is a reading of that metric.
+      // ── ANCHORED, both kinds (filed by Scribe with the round-30 fix) ──────
+      // These were UNANCHORED SUBSTRING matches. `matched_within_drift_pct`
+      // matches inside `matched_within_drift_pct_silence_tolerant`, so a
+      // tolerant figure written beside its OWN identifier could bind to the
+      // STRICT metric and raise a false Major — and the answer that shipped was
+      // to lay the prose out so it did not happen, which is a workaround, not a
+      // control. An identifier that is a prefix of a longer identifier is not a
+      // mention of the shorter one, and neither is a prose phrase that occurs
+      // inside an identifier: `match rate` inside `match_rate_pct_by_voice` is
+      // the column's name, not a sentence about it.
+      //
+      // A false MAJOR is not a harmless direction. It is how a guard gets
+      // reworded around instead of trusted, and a guard nobody trusts is off.
+      const WORD_TAIL = '(?![A-Za-z0-9_])';
       const mentions = [];
       for (const { key: metric, alias } of TRACKED) {
-        for (const m of txt.matchAll(new RegExp(`\`?${metric}\`?`, 'g'))) {
+        for (const m of txt.matchAll(new RegExp(`(?<![A-Za-z0-9_])\`?${metric}\`?${WORD_TAIL}`, 'g'))) {
           mentions.push({ metric, kind: 'id', at: m.index, end: m.index + m[0].length });
         }
-        for (const m of txt.matchAll(new RegExp(alias.source, 'gi'))) {
+        for (const m of txt.matchAll(new RegExp(alias.source + WORD_TAIL, 'gi'))) {
           mentions.push({ metric, kind: 'prose', at: m.index, end: m.index + m[0].length });
         }
       }
@@ -1745,8 +2048,11 @@ function runChecks(src, opts = {}) {
       for (const rec of byPath.values()) {
         if (wavs[rec.path]) continue;
         const src = typeof rec.reconstructible_from === 'string' ? rec.reconstructible_from : null;
-        const srcPath = src ? `${ARTIFACT_DIR}/${src}` : null;
-        const srcOk = srcPath && existsSync(srcPath) && readdirSync(srcPath).length > 0;
+        const srcPath = src ? `${ARTIFACT_DIR}/${src}`.replace(/\/+$/, '') : null;
+        // Asked of the INDEX, like everything else here (J29-m4): a directory
+        // that exists only on this disk cannot back a reconstruction anyone
+        // else can perform, and that is the whole point of the escape.
+        const srcOk = Boolean(srcPath && index.hasPath(srcPath));
         if (srcOk && rec.sha256) continue;
         add('MAJOR', 'artifact', 'roadmap', 0,
           `[ART-STALE] ${MANIFEST} records ${rec.path} and no such file is in ` +
@@ -1764,15 +2070,16 @@ function runChecks(src, opts = {}) {
           // `voice_langs` is keyed exactly that way, so the convention would
           // make correct per-voice rows unrepresentable. Flagged by
           // spike-a-voices.json's own `_art_stale_gap` note, not by review.
-          const rec = byPath.get(typeof row.audio_path === 'string' ? row.audio_path : `${row.lang}.wav`);
+          const wanted = typeof row.audio_path === 'string' ? row.audio_path : `${row.lang}.wav`;
+          const rec = byPath.get(wanted);
           if (!rec) {
             add('MAJOR', 'artifact', 'roadmap', 0,
               `[ART-STALE] ${ARTIFACT_DIR}/${f} reports a result for \`${row.lang}\` and ` +
-              `${MANIFEST} has no entry for ${row.lang}.wav — the audio it scored is unidentified.`);
+              `${MANIFEST} has no entry for ${wanted} — the audio it scored is unidentified.`);
           } else if (Math.abs(Number(rec.seconds) - row.audio_seconds) > 0.011) {
             add('MAJOR', 'artifact', 'roadmap', 0,
               `[ART-STALE] ${ARTIFACT_DIR}/${f} scored ${row.audio_seconds}s of \`${row.lang}\` ` +
-              `audio; ${MANIFEST} says ${row.lang}.wav is ${rec.seconds}s. The result describes ` +
+              `audio; ${MANIFEST} says ${wanted} is ${rec.seconds}s. The result describes ` +
               `audio that is not the audio in this repository (H26-C1, J26-M5). Re-run it.`);
           }
         }
@@ -2062,6 +2369,22 @@ if (process.argv.includes('--self-test')) {
     } else if (!opts) {
       results.push([false, `${id}: neither a document mutation nor injected state — nothing was falsified`]);
       return;
+    }
+    // MULTI-DOCUMENT specimens. Some defects are only expressible across two
+    // files: J29-m3(b) is a persona added to CLAUDE.md's roster AND given a
+    // path in CODEOWNERS, and neither half alone is the defect. A harness that
+    // can mutate one document can only falsify guards that read one document,
+    // which is a limit of the harness masquerading as a property of the guards.
+    if (opts?.docs) {
+      mutated = { ...mutated };
+      for (const [k, fn] of Object.entries(opts.docs)) {
+        const next = fn(mutated[k]);
+        if (next === mutated[k]) {
+          results.push([false, `${id}: MUTATION WAS A NO-OP on ${k} — the specimen no longer matches the document`]);
+          return;
+        }
+        mutated[k] = next;
+      }
     }
     // Exact ID only. `f.message.includes(id)` let `REV` pass on an `[SD-REV]`
     // message — a substring false-green Jury demonstrated (N8-M6).

@@ -83,6 +83,91 @@ jobs:
       - name: Test
         run: python -m unittest discover -s aligner/tests -t aligner -v
 
+  # ── The migrations, applied to a REAL PostgreSQL ────────────────────────────
+  # Open since round 28 and named in two consecutive next-gate lists: the
+  # migrations were validated by 21 STATIC proofs that read the SQL text, and by
+  # nothing that ran it. A migration that has never been applied is a file, not a
+  # schema — `assert_rls_class_rule` can be perfectly written and still fail on a
+  # server, and no amount of reading it finds that out.
+  #
+  # This is the J28-M6 shape closed for the second time. Round 28 found 16 proofs
+  # invoked by no CI job; Atlas has now reached a real server by hand and the
+  # capability exists — but a capability nobody runs is exactly the finding, so
+  # the enforcement lives here.
+  #
+  # ── THE VERSION PIN, AND WHAT IS NOT KNOWN ─────────────────────────────────
+  # Atlas verified on PostgreSQL 18.1, because that is what this Windows box has.
+  # Supabase does not run 18.1: it runs 15 or 17. Pinning CI to the version that
+  # happened to be installed on one developer's machine would be gating the
+  # wrong server — the same class of mistake as measuring one configuration and
+  # quoting it for another.
+  #
+  # WHICH ONE WE DEPLOY IS NOT DECLARED ANYWHERE IN THIS REPOSITORY. `grep`
+  # returns no `config.toml`, no ADR, no roadmap line naming a major version.
+  # So this does not guess: it gates BOTH versions Supabase serves, which is
+  # strictly stronger than picking one, and the undeclared deploy version is a
+  # finding for whoever owns `supabase/` and the roadmap — not something to be
+  # settled silently by a line in a workflow file. When it IS declared, cut this
+  # matrix to it and say so in the same change.
+  migrations:
+    name: migrations on postgres ${{ matrix.pg }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ['15', '17']
+    services:
+      postgres:
+        # A throwaway cluster per job. The local `initdb` recipe exists because
+        # this Windows box has no Docker; on a runner the service container is
+        # the shorter path to the same thing.
+        image: postgres:${{ matrix.pg }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Apply every migration in order
+        # ON_ERROR_STOP=1 is the whole point: without it psql reports a failed
+        # statement and exits 0, so a broken migration passes a job that ran it.
+        # The glob is sorted by the shell, and the filenames are timestamped, so
+        # "in order" is the order they will be applied in production.
+        env:
+          PGURL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(supabase/migrations/*.sql)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no migrations found — this job would pass by having nothing to do"
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            echo "── applying $f"
+            psql "$PGURL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "applied ${#files[@]} migration(s)"
+
+      - name: Verify the voice_langs guarantees against the live schema
+        # The static half of this harness runs in the `docs` job on every clone.
+        # This is the half that needs a server: the live probes execute inside
+        # ONE transaction that ends in ROLLBACK, so the cluster is not mutated
+        # and the job is re-runnable. The harness refuses any non-loopback host
+        # unless `--allow-remote` is passed, which is not passed here — this job
+        # cannot reach a real project even if the URL were wrong.
+        run: node supabase/tests/verify_voice_langs.mjs --db-url=postgresql://postgres:postgres@127.0.0.1:5432/postgres
+
   docs:
     name: documentation gate
     runs-on: ubuntu-latest
@@ -106,12 +191,13 @@ jobs:
             exit 0
           fi
           exit "$code"
-      - name: Verify the voice_langs guarantees (J28-M6)
-        # 12 static proofs that each guarantee is DECLARED in the migration.
+      - name: Verify the voice_langs guarantees, statically (J28-M6)
+        # The static proofs: each guarantee is DECLARED in the migration text.
         # This shipped with 16 proofs invoked by no CI job and no script -- a
         # test suite nobody runs is documentation with a misleading file
-        # extension. The 20 LIVE probes need a Postgres and are not run here;
-        # that gap is named in the roadmap, not papered over.
+        # extension. The LIVE probes need a server and run in the `migrations`
+        # job above, on both Postgres versions Supabase serves. Until that job
+        # existed this comment named the gap; it now names where it is closed.
         run: node supabase/tests/verify_voice_langs.mjs
 
       - name: doc-check --self-test

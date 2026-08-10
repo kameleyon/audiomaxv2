@@ -137,6 +137,38 @@ remember the concept living, and memory misses roughly a third of the sites.
 `align_reason` had twelve mentions; three were updated and the author believed
 the job done.
 
+### When more than one agent writes in a round — the second sweep
+
+The pass above runs **before** editing. That is the right time for one author
+and the **one moment it cannot work for several**, because a peer's edit does
+not exist yet when you grep for it. Round 31 dispatched three agents on disjoint
+scopes; each was clean inside its own scope, and **four of the round's six new
+Majors were between them** — a migration recording a file as unfixed while the
+commit fixed it, a grep block whose coordinates a peer was moving as it was
+written, a roadmap item declaring a CI job absent that a peer was building, a
+test count corrected in one of its two homes.
+
+> **Disjoint scopes do not compose. They only fail to overlap.**
+
+So when N > 1 agents write in one round, the orchestrator runs a **second sweep
+after all agents report and before the gate**, and it is not the same grep:
+
+1. **Union the identifiers** every agent touched — not just your own.
+2. Grep each across **all four precedence documents plus every agent's files**,
+   including SQL, JSON artifacts and CI YAML. A stale claim in a migration
+   comment is a stale claim.
+3. **Grep for peer-scope assertions specifically** — the phrases that describe
+   another agent's work as pending: `out of scope`, `no CI job`, `still`,
+   `due 20`, `Owner:`, `REPAIR:`, `not yet`. Every hit is checked against what
+   the round actually did, because these are the sentences that go stale by
+   someone else's success.
+4. **Cite by quotation, never by line number** — in every artifact, including
+   SQL comments. A peer reflows the file you are citing while you cite it.
+
+**The seams belong to the orchestrator.** No agent owns the sentence that spans
+two scopes, so if the orchestrator does not run this sweep, nobody does — and
+the round passes cleanly in every scope while failing between them.
+
 **The automated half must be bidirectional and cover every table.** v4's test
 checked interface field → column, scoped to §3.2 and §7.2/§7.2a. That cannot
 detect a field on the **wrong table**, a **spurious** column, or a table in §7.1
@@ -233,8 +265,14 @@ Consult `studio-zero/CAPABILITIES.md` before proposing any tool or dependency.
    rate limits and quotas (finding J-C2).
 5. **Provider keys never leave the worker.** Clients get short-lived signed
    URLs. **RLS on every table carrying user data** — by `user_id` where the
-   column exists, by join through `documents` otherwise; `voices` is a global
-   catalogue and is exempt. URL fetching is egress-controlled.
+   column exists, by join through `documents` otherwise. **The exemption is a
+   class, not a name (H26-C3):** a table is exempt when it carries no user data
+   at all, which today is **two** tables — `voices` and `voice_langs` (spec
+   §7.1a) — not whichever one is called `voices`. URL fetching is
+   egress-controlled. *(This named `voices` alone while §7's rule had already
+   grown to two, and an enumeration goes stale the first time the set grows.
+   Scheduled Scribe · 2026-08-15; closed early, 2026-08-10, because the
+   reconciliation grep surfaced it while constraint 7 was being edited.)*
 6. **Users can delete their data.** Every document and account has a real
    erasure path that cascades to storage. A takedown you cannot honour is a
    legal liability, not a backlog item.
@@ -259,7 +297,15 @@ Consult `studio-zero/CAPABILITIES.md` before proposing any tool or dependency.
    entitled to be told about. The Gemini-era answer was "Google". With the TTS
    route gone, **the LLM model has not been chosen and therefore the host cannot
    be named.** Shipping ingest while the list says "an LLM" is this constraint
-   breached, not deferred. Owner: **Comply** with **Forge** · due before Phase 5.
+   breached, not deferred. Owner: **Comply** with **Forge** · **due 2026-08-15**,
+   and in no case later than the first ingest endpoint.
+
+   *(J30-m4 — this read "due before Phase 5" and nothing else. A phase gate is
+   not comparable with the dates every other open item in these documents
+   carries: it cannot fall overdue, it cannot be sorted next to `Forge ·
+   2026-08-14`, and the commit gate's `PASS WITH FIXES` row requires "a named
+   owner and a date", which a phase is not. The phase condition is kept because
+   it is the harder of the two — whichever arrives first binds.)*
 
 ---
 

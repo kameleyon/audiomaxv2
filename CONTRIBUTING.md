@@ -9,7 +9,10 @@ finding — report it rather than working around it.
 ## 1. Phase 0 scaffolding exists; no product feature does
 
 There is a `package.json`, a pnpm lockfile, three workspaces, two services with
-`/health`, and 30 tests. **Nothing ingests a document, synthesizes audio or
+`/health`, and **66 tests** — 57 in `worker` (`node --test`) and 9 in `aligner`
+(`python -m unittest`), which is what `pnpm test` runs. *(This said 30, and had
+since the scaffold; the gates that count their own trials are guarded by
+`[SD-SELFTEST]` and this number was guarded by nothing.)* **Nothing ingests a document, synthesizes audio or
 serves a segment** — every product path is still design-only.
 
 Use **`pnpm`** (pinned via `packageManager`), not `npm`. Zero runtime
@@ -38,23 +41,32 @@ record.
 
 ---
 
-## 2. Two gates, and you must clear both
+## 2. Three gates, and you must clear all three
 
 ### Gate 1 — `doc-check` must be clean
 
 ```bash
 node tools/doc-check.mjs             # must exit 0
-node tools/doc-check.mjs --self-test # must report 82 passed, 0 failed
-node .github/scripts/secret-scan.mjs --self-test  # must report 26 passed, 0 failed
+node tools/doc-check.mjs --self-test # must report 93 passed, 0 failed
+node .github/scripts/secret-scan.mjs --self-test  # must report 32 passed, 0 failed
 node .github/scripts/secret-scan.mjs              # reads STAGED BLOBS, not the disk
-node supabase/tests/verify_voice_langs.mjs        # 12 static proofs of the schema guarantees
+node supabase/tests/verify_voice_langs.mjs        # static proofs, read from the migration text
 ```
 
-Run **both** before every commit. The first checks the documents; the second
-mutates the live documents in memory and re-runs the shipped checks, proving each
-guard still fires on its own defect. A guard that no longer fires is a guard that
-has rotted around a changed document, and it will sit green over the defect it
-was written for.
+Both self-test counts are checked by `[SD-SELFTEST]`, which obtains the
+`secret-scan` number by **running** that harness rather than by keeping a second
+copy of it. So these two numbers cannot drift from the harnesses: adding a guard
+without a specimen, or a specimen without updating this line, turns `doc-check`
+red.
+
+The **live** half of the schema proofs needs a real PostgreSQL and runs in CI —
+see §"Gate 3" below. It is not part of the local pre-commit loop.
+
+Run **all of them** before every commit. The first checks the documents; the
+second mutates the live documents in memory and re-runs the shipped checks,
+proving each guard still fires on its own defect. A guard that no longer fires is
+a guard that has rotted around a changed document, and it will sit green over the
+defect it was written for.
 
 `doc-check` verifies bidirectional field coverage (every spec interface field has
 a column **and** every column traces to a field), migration coverage, 17
@@ -112,6 +124,45 @@ or destructive Bash.
 opens by loading the prior report and resolving **each finding by ID** —
 `fixed` / `open` / `disputed`, never silence — and by re-running the original
 verification command rather than accepting a claim that something was fixed.
+
+### Gate 3 — the migrations must apply to a real PostgreSQL
+
+`node supabase/tests/verify_voice_langs.mjs` with no arguments runs the **static**
+proofs: it reads the migration text and checks that each guarantee is *declared*.
+That is worth having and it is not the same as knowing the migration *works*.
+`assert_rls_class_rule` can be perfectly written and still fail on a server, and
+no amount of reading the SQL finds that out.
+
+CI therefore runs a `migrations` job that creates a throwaway cluster, applies
+`supabase/migrations/*.sql` in filename order with `ON_ERROR_STOP=1`, and then
+runs the harness against it:
+
+```bash
+node supabase/tests/verify_voice_langs.mjs --db-url=postgresql://…
+```
+
+The live probes execute inside **one transaction that ends in `ROLLBACK`**, so
+the job is re-runnable and the cluster is never mutated. The harness **refuses
+any non-loopback host** unless `--allow-remote` is passed, and CI does not pass
+it — the job cannot reach a real project even if the URL were wrong.
+
+To run it locally you need a PostgreSQL you can throw away. There is no
+credential and no network involved:
+
+```bash
+initdb -D /tmp/pgdata -U postgres --auth=trust --encoding=UTF8 --locale=C
+pg_ctl -D /tmp/pgdata -o "-p 55432 -c listen_addresses=127.0.0.1" -l /tmp/pg.log start
+for f in supabase/migrations/*.sql; do psql "postgresql://postgres@127.0.0.1:55432/postgres" -v ON_ERROR_STOP=1 -f "$f"; done
+node supabase/tests/verify_voice_langs.mjs --db-url=postgresql://postgres@127.0.0.1:55432/postgres
+pg_ctl -D /tmp/pgdata stop -m immediate
+```
+
+> **The version we deploy on is not declared anywhere in this repository.**
+> Supabase serves PostgreSQL 15 or 17; the local verification above was done on
+> 18.1, because that is what one developer's machine had. CI therefore gates
+> **both 15 and 17** rather than guessing, which is strictly stronger than
+> picking one. When the deploy version is written down, narrow the matrix to it
+> in the same change that declares it.
 
 ---
 
