@@ -1,0 +1,36 @@
+# audiomax aligner sidecar — the WHISPERX stack, for cost comparison.
+#
+# This file exists so "whisperx is heavier" is a measured number in
+# `spike-e/out/spike-e-results.json` rather than an opinion. Build it with:
+#   docker build --target runtime --build-arg REQUIREMENTS=requirements-whisperx.txt \
+#                -t audiomax-aligner:whisperx aligner/
+#
+# WHAT IT COSTS. whisperx 3.8.6 declares these as HARD dependencies, not extras:
+#   pyannote-audio>=4.0.0   speaker diarization — never used; the input is one
+#                           synthesized voice, so it has one speaker by
+#                           construction. Pulls pytorch-lightning + torchmetrics.
+#   torchvision~=0.23.0     no vision path exists in this product.
+#   torchcodec>=0.6.0,<0.8  additional media decode on top of the ffmpeg the
+#                           image already installs.
+#   transformers>=4.48.0    see the pin below.
+#
+# THE transformers PIN IS LOAD-BEARING AND IS A RANGE, NOT A POINT.
+# transformers 5.x removed the top-level `Wav2Vec2ForCTC` / `Wav2Vec2Processor`
+# exports that whisperx imports at module scope, so `whisperx.alignment` raises
+# ModuleNotFoundError on import. That is not a theory: it is the recorded reason
+# `aligner/spike-a/out/spike-a-whisperx.json` reports the named deliverable never
+# executed, and it reproduces on this host today (transformers 5.14.1,
+# whisperx 3.8.6 — verified 2026-08-10).
+# The floor is whisperx's own declared `>=4.48.0`; the ceiling is the 5.0 break.
+# An earlier draft of this pin read `==4.46.3`, which is BELOW whisperx's floor
+# and would not have resolved at all. Kept in the comment because a pin that
+# looks plausible and is unsatisfiable is worth one sentence of warning.
+transformers>=4.48.0,<5
+whisperx==3.8.6
+
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+torch==2.8.0
+torchaudio==2.8.0
+numpy>=2.1.0
+soundfile==0.12.1

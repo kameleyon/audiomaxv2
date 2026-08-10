@@ -111,6 +111,38 @@ sizing, which the spec calls the central design decision" (roadmap, Phase 0,
 SPIKE A · Owner Forge · due 2026-08-14). If short-clip accuracy behaves
 differently than assumed, the 1,000-character target moves.
 
+**Two measurements now push on it from opposite directions, and neither has been
+resolved into a number.**
+
+**1. Memory says a 60-second segment is expensive to align in one pass**
+(SPIKE E). Peak RSS for a single 73–77 s segment is **2,849–4,549 MiB**, and it
+is dominated by **forced alignment, not ASR** — ASR plateaus flat at ~493 MiB —
+because self-attention is **quadratic in frames**. Chunking the alignment pass
+to 15 s bounds memory by the chunk: peak falls to **1,937 MiB**, the
+alignment-attributable term falls **3.8×**, and the recommended container drops
+from **5 GiB to 2.5 GiB** — twice the memory bill and half the workers per node.
+
+**The cost of chunking is a seam every chunk, and whether the match step
+tolerates a seam is a word-sync question, which is why it is routed here rather
+than to the queue.** It is genuinely open. ADR-0006's matcher re-synchronises
+forward with a 3-token trigger and a 3-token anchor, which is *exactly* the
+machinery a chunk seam would need — but re-sync was measured on continuous audio
+recovering from ASR error, **not on an imposed boundary every 15 s**, and a
+matcher that recovers within a few tokens still loses those tokens at every
+seam. **~1,000 characters of audio would cross roughly four seams.**
+*(Owner: Forge · due 2026-08-18; roadmap Phase 7 carries the item.)*
+
+**2. Accuracy is currently bound by recognition, not by clip length**
+(ADR-0006). The 95 bar is **ASR-bound** — 93 of 125 unplaced tokens on the best
+long clip are words the ASR never wrote — so shortening segments to help
+alignment would not move the bar today. **That is a reason not to resize yet,
+not evidence that size is irrelevant**: the drift-accumulation question the size
+target was meant to bound (`H26-M7`) is still open, and its intervals have not
+been re-scored under the new matcher.
+
+**So the 1,000-character target is unchanged, and is now unchanged for a stated
+reason rather than by default.**
+
 ## References
 
 - Spec §3 (pipeline and the resolution table), §3.4 (segment rules,

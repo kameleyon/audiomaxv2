@@ -578,8 +578,110 @@ def verify(mutate=None) -> list:
 
 # ── Score: the bar, against true boundaries ──────────────────────────────
 
+def _betacf(a: float, b: float, x: float) -> float:
+    """Continued fraction for the incomplete beta, by the modified Lentz method.
+
+    Stdlib only, like everything else in this file, because a number this
+    repository is asked to trust should not depend on a library nobody in the
+    review opens. Checked against published quantiles in `self_test`.
+    """
+    tiny = 1e-30
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < tiny:
+        d = tiny
+    d = 1.0 / d
+    h = d
+    for m in range(1, 300):
+        m2 = 2 * m
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        h *= d * c
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        if abs(d) < tiny:
+            d = tiny
+        c = 1.0 + aa / c
+        if abs(c) < tiny:
+            c = tiny
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < 3e-16:
+            break
+    return h
+
+
+def betainc(a: float, b: float, x: float) -> float:
+    """Regularized incomplete beta I_x(a, b)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    front = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                     + a * math.log(x) + b * math.log1p(-x))
+    if x < (a + 1.0) / (a + b + 2.0):
+        return front * _betacf(a, b, x) / a
+    return 1.0 - math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                          + b * math.log1p(-x) + a * math.log(x)) * _betacf(b, a, 1.0 - x) / b
+
+
+def student_t_cdf(t: float, df: int) -> float:
+    """P(T <= t) for Student's t with `df` degrees of freedom."""
+    x = df / (df + t * t)
+    tail = 0.5 * betainc(df / 2.0, 0.5, x)
+    return 1.0 - tail if t > 0 else tail
+
+
+def student_t_ppf(p: float, df: int) -> float:
+    """The two-sided-usable quantile: the t with P(T <= t) = p.
+
+    Bisection on a monotone CDF. Slower than a closed form and obviously
+    correct, which is the trade this file makes everywhere.
+    """
+    lo, hi = -1e3, 1e3
+    for _ in range(200):
+        mid = (lo + hi) / 2.0
+        if student_t_cdf(mid, df) < p:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
 def _fit(xs, ys):
-    """OLS slope + Pearson r + a Fisher-z two-sided p. Stdlib only, and labelled."""
+    """OLS slope with a NAMED, reproducible 95% interval, plus Pearson r.
+
+    ── J30-m1. THE INTERVAL IS EMITTED HERE OR IT IS NOT REPRODUCIBLE ────────
+    The roadmap published slope confidence intervals that NO STANDARD DERIVATION
+    REPRODUCES: an OLS t interval returns `en [-0.896, +0.640]` against a
+    published `[-0.900, +0.650]`, and a Fisher-z interval on r transformed back
+    to the slope scale reproduces `es` and `fr` to 0.005 and `en` only to 0.017.
+    A published interval nobody can re-derive is a number with the shape of
+    evidence and none of the content, and the fix is not to argue about which
+    method was meant — it is for the file that owns the data to emit the interval
+    and SAY WHICH METHOD, so the next reader re-runs it instead of guessing.
+
+    The method is the ORDINARY LEAST SQUARES t INTERVAL on the slope:
+
+        b     = Sxy / Sxx
+        se(b) = sqrt( (Syy - b*Sxy) / (n - 2) / Sxx )
+        b  ±  t(0.975, n-2) * se(b)
+
+    It is the exact interval for the model this fit already assumes (independent,
+    homoscedastic residuals about a straight line). That assumption is ITSELF the
+    weakest link here — consecutive word timings in one clip are not independent
+    — so the interval is labelled with the assumption rather than presented as
+    unconditional, and `p_value_fisher_z` is kept beside it because the two
+    disagreeing is information.
+    """
     n = len(xs)
     if n < 4:
         return None
@@ -593,11 +695,25 @@ def _fit(xs, ys):
     r = max(-0.999999, min(0.999999, r))
     z = math.atanh(r) * math.sqrt(n - 3) if n > 3 else 0.0
     p = 2 * (1 - statistics.NormalDist().cdf(abs(z)))
-    return {"n": n, "slope_ms_per_s": round(sxy / sxx, 3), "pearson_r": round(r, 3),
+    b = sxy / sxx
+    resid_ss = max(syy - b * sxy, 0.0)
+    se = math.sqrt(resid_ss / (n - 2) / sxx)
+    tcrit = student_t_ppf(0.975, n - 2)
+    return {"n": n, "slope_ms_per_s": round(b, 3), "pearson_r": round(r, 3),
+            "slope_ci95_ms_per_s": [round(b - tcrit * se, 3), round(b + tcrit * se, 3)],
+            "slope_se_ms_per_s": round(se, 4),
+            "slope_ci_method": "OLS t interval, b ± t(0.975, n-2)·se(b)",
+            "slope_ci_t_critical": round(tcrit, 4),
             "p_value_fisher_z": round(p, 4),
-            "_stat_note": ("Fisher-z normal approximation, not an exact t test. Read as a "
-                           "screen: |r| small and p large means no accumulation was detected, "
-                           "which on this n is not the same as none existing.")}
+            "_stat_note": ("The interval is the OLS t interval named in `slope_ci_method` and "
+                           "is reproducible from `n`, `slope_ms_per_s` and `slope_se_ms_per_s` "
+                           "alone. It assumes independent homoscedastic residuals, which "
+                           "consecutive word timings in ONE clip are not, so read it as a "
+                           "screen and not as a coverage guarantee. `p_value_fisher_z` is a "
+                           "Fisher-z normal approximation on r, not an exact t test, and is "
+                           "kept beside the interval because the two disagreeing is "
+                           "information: |r| small and p large means no accumulation was "
+                           "DETECTED, which on this n is not the same as none existing.")}
 
 
 def fa_starts(wav: pathlib.Path, display, lang: str, fa):
@@ -1226,6 +1342,46 @@ def self_test() -> int:
             return [f"{b['lang']}: within-drift {r['within']:.1f}% survived a reversed truth"
                     for b, r in zip(base, rv) if r["within"] >= max(20.0, b["within"] - 20.0)]
         trial("GT-REVERSE          a reversed truth destroys the score", reversed_truth, False)
+
+    # 11. THE SLOPE INTERVAL (J30-m1). The roadmap published intervals no standard
+    #     derivation reproduces, so this file now emits its own and NAMES the
+    #     method. An emitted interval is worth exactly as much as the quantile
+    #     behind it, so the quantile is checked against published values and the
+    #     interval is checked against a fit whose answer is known by construction.
+    def slope_interval():
+        bad = []
+        # (a) The t quantile, against a printed table. If `student_t_ppf` were
+        #     silently returning the NORMAL quantile — the single most likely way
+        #     to be wrong here, and the difference between the published figure
+        #     and the reproducible one — df=10 would read 1.960, not 2.228.
+        for df, want in ((10, 2.228), (30, 2.042), (100, 1.984), (1000, 1.962)):
+            got = student_t_ppf(0.975, df)
+            if abs(got - want) > 5e-4:
+                bad.append(f"t(0.975, {df}) = {got:.4f}, published {want}")
+        # (b) A fit with NO residual: the slope is exact, so the interval must
+        #     collapse onto it. An interval that stays wide on noiseless data is
+        #     not reading the residuals.
+        xs = [float(i) for i in range(20)]
+        exact = _fit(xs, [3.0 * x + 1.0 for x in xs])
+        if exact is None or abs(exact["slope_ms_per_s"] - 3.0) > 1e-9:
+            bad.append(f"noiseless fit did not recover the slope: {exact}")
+        elif max(abs(v - 3.0) for v in exact["slope_ci95_ms_per_s"]) > 1e-6:
+            bad.append(f"noiseless fit returned a WIDE interval {exact['slope_ci95_ms_per_s']}")
+        # (c) And it must not always collapse. Add residuals and it has to open.
+        noisy = _fit(xs, [3.0 * x + (7.0 if i % 2 else -7.0) for i, x in enumerate(xs)])
+        if noisy is None or noisy["slope_ci95_ms_per_s"][1] - noisy["slope_ci95_ms_per_s"][0] < 1e-3:
+            bad.append("the interval did not widen when residuals were introduced, so (b) "
+                       "proves nothing")
+        # (d) The interval is REPRODUCIBLE from the fields emitted beside it —
+        #     which is the whole finding. b ± t·se, recomputed from the artifact's
+        #     own numbers, must return the artifact's own interval.
+        if noisy is not None:
+            lo = noisy["slope_ms_per_s"] - noisy["slope_ci_t_critical"] * noisy["slope_se_ms_per_s"]
+            if abs(lo - noisy["slope_ci95_ms_per_s"][0]) > 1e-3:
+                bad.append(f"the emitted interval cannot be rebuilt from the emitted "
+                           f"n/slope/se: {lo:.3f} vs {noisy['slope_ci95_ms_per_s'][0]}")
+        return bad
+    trial("GT-SLOPECI          the slope interval is reproducible and named", slope_interval, False)
 
     print(f"\nself-test: {len(trials) - failed} passed, {failed} failed")
     return 1 if failed else 0

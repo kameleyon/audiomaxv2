@@ -100,3 +100,23 @@ Thumbs.db
 # excluding these loses no falsifiability. 35 MB.
 /aligner/spike-a/out/*-gt.wav
 /aligner/spike-a/out/*-gtlong.wav
+
+# SPIKE D: the OCR CACHE, excluded. The RESULT is committed; this is not it.
+#
+# `ocr-cache.json` (297 KB) memoises engine output so `run.py` need not re-run OCR.
+# The evidence is `spike-d-results.json`; the cache is an optimisation, and the
+# fixtures that regenerate it are committed.
+#
+# It is excluded for a second reason worth recording, because it is a genuine
+# interaction between two agents' work in one round. `secret-scan`'s
+# `bare-credential-token` rule had its 48-character cap removed (J29-m1) so that
+# long generated tokens stop escaping. OCR output from this spike loses inter-word
+# spaces — `thenorthernshore.Eachstation`, `CoastalDynamicsQuarterly` — which is
+# 28+ characters, mixed case, adjacent to digits: *exactly* the shape the rule now
+# hunts. Eight findings, none a secret.
+#
+# The scanner is NOT weakened to accommodate this. No SKIP entry was added, because
+# a rule that stops looking at machine-generated text is a rule that stops looking
+# where a leaked key is hardest to see. If OCR output is ever committed as evidence
+# rather than cache, the scanner SHOULD fire and a human SHOULD look.
+/aligner/spike-d/out/ocr-cache.json

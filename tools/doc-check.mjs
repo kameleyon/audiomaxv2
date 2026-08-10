@@ -586,6 +586,24 @@ const EXTRA_TRIALS = [
   ['REV', 'spec', (t) => t.replace(/### 7\.2 `segments`/, '### 7.2 `segments`\n\n`bogus_spurious_column` ·')],
   ['SD-REV', 'spec', (t) => t.replace(/\*\*Revision:\*\* v\d+/, '**Revision:** v3')],
   ['SD-COUNT', 'spec', (t) => t.replace(/`node tools\/doc-check\.mjs`/, '99 prose-regression guards via `node tools/doc-check.mjs`')],
+  // ── THE NESTING TRIAL. [SD-COUNT-AUDITS] existed for four rounds and had no
+  // mutation, and in that time it sat one closing brace INSIDE the [SD-ROSTER]
+  // loop — so it ran only for documents containing a `rounds 1–N` phrase, and
+  // none of the three documents that carried a wrong audit count had one. The
+  // guard written for "the single most recurrent defect in this repository" had
+  // never once executed on a document carrying that defect, while the coverage
+  // line counted it as a check that exists.
+  //
+  // The specimen therefore STRIPS the roster phrase before injecting the wrong
+  // count. Choosing a document that merely happens to lack one today would make
+  // this trial silently stop testing the nesting the first time someone adds a
+  // roster sentence to the README — which is the same shape of quiet blindness
+  // it was written to end. Relative (`+3`) rather than a literal, so it does not
+  // go stale the next time an audit is committed.
+  ['SD-COUNT-AUDITS', 'readme', (t) => t
+    .replace(/rounds?\s*1[–-]\d+/gi, 'the audit trail')
+    .replace(/(\d{1,3})(\s+(?:committed\s+)?audit records)/i,
+      (_m, n, tail) => `${Number(n) + 3}${tail}`)],
   ['CTL-ui_locale', 'spec', (t) => t.split('ui_locale').join('~~X~~')],
   // Move a column onto the wrong table — Jury's N8-C2 demonstration, as a test.
   ['PLACE', 'spec', (t) => t.replace(/(### 7\.2 `segments`[\s\S]{0,400}?`display_byte_count`)/, '$1 · `align_status`')],
@@ -2161,6 +2179,7 @@ function runChecks(src, opts = {}) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
           `[SD-ROSTER] roster says rounds 1–${m[1]}; ${ROUNDS_ON_DISK} audit records exist`);
       }
+    }
     // J24-M4 -- the single most recurrent defect in this repository (J18-M3 ->
     // J19-M1 -> J23-M1 -> J24-M2, four recurrences) had NO CHECK. SD-ROSTER knew
     // the range form and the filename form and not the plain-prose count, so the
@@ -2171,12 +2190,26 @@ function runChecks(src, opts = {}) {
     // exactly what a blanket regex did on its first run here, turning round 19's
     // "claimed 17 audit records; the commit made 18" into a sentence that says
     // nothing. Evidence is not a thing to tidy.
+    //
+    // ── J31-M?: IT WAS NESTED, AND THEREFORE UNREACHABLE ON ITS OWN SUBJECT ──
+    //
+    // This loop stood INSIDE the SD-ROSTER loop body, one closing brace too far
+    // down. It therefore ran only for documents containing a `rounds 1–N`
+    // phrase — and NONE of the three documents carrying a wrong audit count has
+    // one. The guard written for what the comment above calls "the single most
+    // recurrent defect in this repository" had never once executed on a document
+    // that carried the defect, and the suite reported it as a passing check.
+    //
+    // Proven, not inferred: appending a `rounds 1-31` phrase to a document with
+    // a wrong count made it fire; removing the phrase silenced it with the wrong
+    // count still in place. That is exactly the mutation TRIAL-SD-COUNT-AUDITS
+    // now performs — it mutates a document that has NO roster phrase, so a
+    // re-nesting puts the trial red rather than leaving it green and blind.
     for (const m of txt.matchAll(/([0-9]{1,3})\s+(?:committed\s+)?audit records/gi)) {
       if (Number(m[1]) !== ROUNDS_ON_DISK) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
           `[SD-COUNT-AUDITS] claims ${m[1]} audit records; ${ROUNDS_ON_DISK} exist on disk`);
       }
-    }
     }
     // The roadmap enumerates rounds as a FILENAME list, which the range form
     // above cannot see — so the guard sat green over a stale roster (N8-M1).

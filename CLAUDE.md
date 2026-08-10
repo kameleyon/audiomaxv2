@@ -23,7 +23,19 @@ Severity-explicit, so the verdict is computable rather than a judgement call:
 | `FAIL` | Any open Blocker or Critical | **Blocked** |
 
 Minor and Polish findings never block a commit. They are tracked and fixed
-when convenient, per Jury's own rubric (`jury.md:71-76`).
+when convenient, per Jury's own rubric — `jury.md`, *"Severity rubric is fixed.
+Every finding is exactly one of these"*, which enumerates **Blocker · Critical ·
+Major · Minor · Polish**, with Minor as *"fix when convenient"* and Polish as
+*"optional improvement"*.
+
+> **Citations in this file are by quotation, not by line number (`J31-M2`).**
+> Every `jury.md:NNN` below was replaced on 2026-08-10 with the string it
+> pointed at. All five were still accurate when checked — which is the point:
+> `jury.md` lives outside this repository, nobody here controls its line
+> numbering, and a citation stays correct only until someone else edits a file
+> we do not own. A quoted string survives a reflow and is re-findable with
+> `grep -F`; a line number is only ever true for the version that no longer
+> exists.
 
 > **Why this wording** (Jury finding J-C1). The previous version said only
 > `PASS` permits a commit and "there is no middle state." Since any single
@@ -33,7 +45,8 @@ when convenient, per Jury's own rubric (`jury.md:71-76`).
 > severities precisely because the middle states are the useful ones.
 
 **A `FAIL` is not negotiable.** Rework and re-audit. "We'll fix it in the next
-commit" is rejected by Jury's own rules (`jury.md:13`).
+commit" is rejected by Jury itself — `jury.md`: *"Has zero patience for 'we'll
+fix it later' — every finding has an owner and a deadline."*
 
 ### How to run the gate
 
@@ -41,13 +54,16 @@ Spawn a subagent whose system context is the full contents of
 `studio-zero/agents/audit/jury.md`, and hand it:
 
 1. The diff or file set under review — **paths, not summaries**.
-2. The audience rubric (below). Jury refuses to audit without one (`jury.md:22`).
+2. The audience rubric (below). Jury refuses to audit without one — `jury.md`:
+   *"Refuse to start an audit without a defined audience — escalate to BigBrain
+   if missing."*
 3. The relevant spec from `resources/specs/`.
 4. **The prior audit report**, if one exists, so findings are resolved by ID.
 
 **Grant reviewers read tools only.** They must not hold Write, Edit, or
-destructive Bash. Jury's Rule 4 (`jury.md:79`) says auditors do not edit code;
-enforce that with tool scope, not just instructions.
+destructive Bash. Jury's Rule 4 — *"Auditors do not edit code. Reviewers flag
+and recommend; creators implement. This protects the audit's independence."*
+Enforce that with tool scope, not just instructions.
 
 ### Audience rubric
 
@@ -76,9 +92,12 @@ agent is not the originating reviewer, so that property cannot hold literally
 ### Storage
 
 Every report — including passes — is stored at
-`resources/audits/<date>-<subject>.md`. Jury Rule 5 forbids silent passes. This
-project overrides the studio default template location (`jury.md:109`); that is
-deliberate, not drift (finding J-m6).
+`resources/audits/<date>-<subject>.md`. Jury Rule 5 forbids silent passes —
+*"No silent passes. Every audit produces a written report … even when the
+verdict is `PASS`."* This project overrides the studio default location, which
+`jury.md` gives as *"Audit report template stored in
+`shared_context/audits/_template.md`"*; the override is deliberate, not drift
+(finding J-m6).
 
 ---
 
@@ -164,10 +183,53 @@ after all agents report and before the gate**, and it is not the same grep:
    someone else's success.
 4. **Cite by quotation, never by line number** — in every artifact, including
    SQL comments. A peer reflows the file you are citing while you cite it.
+5. **Sweep cross-scope requests in BOTH directions** (J32-M4, J32-M5). Any
+   agent-to-agent request an artifact carries — a `_cross_scope_needs` block, a
+   `REPAIR:` note, an `Owner:` line — is, before the gate, either **discharged
+   and deleted** or **confirmed open and dated**. Round 32 shipped an artifact
+   asking a peer to do what the same commit had already done, *and* left a
+   peer's named request undone. Both ends were visible in one file.
 
 **The seams belong to the orchestrator.** No agent owns the sentence that spans
 two scopes, so if the orchestrator does not run this sweep, nobody does — and
 the round passes cleanly in every scope while failing between them.
+
+### A number is measured when a committed run emits it — not when you compute it
+
+Six findings across five rounds are one defect: `J29-M1` (no run produces the
+pair), `J30-m1` (a table reproducible by no written route), `J32-M1` (ablation
+deltas in no artifact), `J32-M2` (a derivation written into code that was never
+run), `J32-M3` (a new metric guarded by nothing), `J32-M4` (a key whose name
+claims a quantity the code does not measure).
+
+> **A number is not measured because you computed it. It is measured because a
+> committed run emitted it.**
+
+So, before a figure may appear in prose:
+
+1. **It has a key in a committed artifact**, holding that value. Writing the
+   derivation into code is not enough — `J32-M2` closed a finding "at the
+   derivation" and published six numbers the code had never produced.
+2. **The key is added to `[ART-FIGURE]`'s `TRACKED` in the same commit.** An
+   untracked metric must produce an **abstention, not silence**, so the run
+   summary *bounds* the unguarded surface instead of understating it.
+3. **The key name states the quantity actually measured.** A name that claims
+   more than the code does acquires defenders — `compute_cost_per_audio_hour_usd`
+   times one stage of three and is now pinned by `[ART-METRIC]`.
+
+### Relaying carries the same burden as writing
+
+The orchestrator relays figures between agents. In round 32 three relayed
+figures were wrong; agents caught two, and the third reached four documents.
+
+> *The writing rule demands an artifact and the routing rule demands nothing, so
+> a routing message is the only place in this process where a number may travel
+> without provenance.* — Jury, round 32
+
+**A routing message carrying a figure carries its artifact path and key, or says
+"unverified — check the artifact" in terms.** The receiving agent's check is a
+second line of defence, not the first. A bad relay contaminates every scope it
+reaches at once; a bad paragraph contaminates one.
 
 **The automated half must be bidirectional and cover every table.** v4's test
 checked interface field → column, scoped to §3.2 and §7.2/§7.2a. That cannot

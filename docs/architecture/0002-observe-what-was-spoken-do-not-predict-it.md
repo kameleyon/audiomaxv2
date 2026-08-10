@@ -246,15 +246,27 @@ Two mitigations are in the plan, neither of them optional:
 
 - **SPIKE A is rescoped** and is now the only Phase 0 spike gating word sync:
   WhisperX (or equivalent) on the sidecar, plus a language-coverage matrix over
-  **all eleven languages §3.5 routes** — not the four product languages — fixed
-  before the measurement (`J18-M4`). Four numbers per language:
+  **the three supported languages — `en`, `es`, `fr`** — fixed before the
+  measurement (`J18-M4`). *(Corrected 2026-08-10. This read "all eleven
+  languages §3.5 routes — not the four product languages". **Both numbers are
+  wrong now.** Eleven is the reference stack's routing table, which is not our
+  language scope; four was `en`/`es`/`fr`/`ht`, and `ht` left scope on
+  2026-08-08 — ADR-0005 records that the matrix "covers the three supported
+  languages instead of the eleven the reference stack routes — and the scope
+  question that `J18-M4` opened closes with it." The identical `J18-M4` claim
+  lived in three places: the roadmap said **three**, the spec header said
+  **eleven**, and this ADR said **eleven**. One claim, three homes, one right.)*
+  Four numbers per language:
   `median_abs_error_ms`, `p95_abs_error_ms`, `matched_within_drift_pct` (the pass
   bar), `hallucination_rate`, plus `compute_cost_per_audio_hour_usd`. Proposed
   bar: `matched_within_drift_pct >= 95` and `p95_abs_error_ms <= 300`, confirmed
   or moved **by** the measurement and not **after** it.
   *(Owner: Forge · due 2026-08-14.)*
-- **The message catalogue was recounted** to **20 keys / 60 strings** across the
-  three languages. `no_transcriber`, `transcription_unreliable` and `wrong_match`
+- **The `align_*` half of the message catalogue was recounted** to **20 keys /
+  60 strings** across the three languages. *That is the `align_*` budget only*
+  (`H20-C1`) — the catalogue's total is **~54 keys / ~162 strings** (spec §9,
+  recounted for `H26-C3`), and quoting 20/60 as the whole catalogue is precisely
+  the defect `H20-C1` was filed for. `no_transcriber`, `transcription_unreliable` and `wrong_match`
   are the three states this architecture introduces and initially had **no string
   in any language**; `align_status: pending` is a state every rendition now
   passes through and had no key (`J15-C6`, `J17-M5`).

@@ -1,0 +1,19 @@
+# Keep the build context small and keep spike artifacts OUT of the image.
+#
+# spike-a/ is ~250 MB of measurement audio and results. It is evidence, not
+# runtime code, and copying it into the build context slows every build and
+# invalidates layer caching whenever another agent writes a result file.
+
+spike-a/
+spike-e/out/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+tests/
+*.wav
+*.mp3
+*.flac
+.pytest_cache/
+.venv/
+venv/

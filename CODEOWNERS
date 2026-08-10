@@ -64,7 +64,14 @@
 /tools/doc-check.mjs            Forge  Jury
 
 
-# ── Backend services (planned — none of these paths exist yet) ───────────────
+# ── Backend services ─────────────────────────────────────────────────────────
+# `/worker/` and `/aligner/` EXIST and run. Test counts are NOT stated here —
+# `pnpm test` prints them, and a hand-written total in this file has gone stale
+# in four consecutive rounds (see CONTRIBUTING.md §1).
+# The subdirectories below do not exist yet; their rows are pre-assigned so the
+# first commit into one arrives with a reviewer rather than acquiring one later.
+# (This header read "planned — none of these paths exist yet" while both
+# services had been runnable for two commits.)
 /worker/                        Forge           # backend/forge.md
 /worker/src/queue/              Queue           # backend/queue.md — job queues and the render pipeline
 /worker/src/providers/          Forge  Oracle   # ai/oracle.md — cost-per-interaction and eval
@@ -96,7 +103,7 @@
 # Phase 0.5 gates ALL ingest. Nothing here is a backlog item.
 /legal/                         Comply          # operations/comply.md — DMCA, ToS/AUP, retention
 /docs/legal/                    Comply  Proof
-/docs/subprocessors.md          Comply  Vault   # OpenRouter AND Google are named subprocessors — ADR-0003 (the ht path was their original reason; ht left scope, the LLM text path did not)
+/docs/subprocessors.md          Comply  Vault   # OpenRouter is a named subprocessor; the LLM MODEL HOST behind it is NOT YET CHOSEN and therefore cannot be named (CLAUDE.md constraint 7 — Comply with Forge, due 2026-08-15, and no later than the first ingest endpoint). GOOGLE IS NOT A SUBPROCESSOR: this line read "OpenRouter AND Google are named subprocessors — ADR-0003" until 2026-08-10, four rounds after `ht` left scope (ADR-0005) and the Gemini route left with it. CLAUDE.md was corrected on 2026-08-09 (J29-C3) and this was not — and of every home that claim had, this is the one that assigns reviewers to the disclosure artifact itself, so the stale version would have been read by whoever wrote the list. TTS is TWO vendors: Fish `s2-pro` and Lemonfox
 
 
 # ── i18n ─────────────────────────────────────────────────────────────────────

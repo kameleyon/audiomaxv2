@@ -1,8 +1,29 @@
 # ADR-0005 — Haitian Creole is removed from scope
 
-- **Status:** Accepted, 2026-08-08. Supersedes the language-scope half of [ADR-0003](0003-haitian-creole-tts-routing.md); ADR-0003's *routing* finding still stands and still governs `es`/`fr`.
+- **Status:** Accepted, 2026-08-08. Supersedes the language-scope half of [ADR-0003](0003-haitian-creole-tts-routing.md). **ADR-0003's routing finding governs nothing in audiomax** — see the correction below.
 - **Decider:** Jo (owner). This is a product-scope decision, not a technical one.
 - **Supported languages after this ADR:** `en`, `es`, `fr`.
+
+> **CORRECTED 2026-08-10 (`J29-C3`, found unfixed here).** The Status line above
+> read *"ADR-0003's *routing* finding still stands and **still governs
+> `es`/`fr`**."* **It does not, and it never did.** Gemini was reached for `ht`
+> only; `es` and `fr` are **Fish Audio `s2-pro`** and always were, in the
+> reference stack and in spec §3.5.
+>
+> That exact sentence is the one round 29 ruled *"the single sentence that
+> propagated the error into SPIKE A's first `es`/`fr` measurement"* — audio for
+> two of three shipping languages generated on a provider this product does not
+> use. It was struck from ADR-0003's banner on 2026-08-09 and **left standing
+> verbatim in the ADR that supersedes it**, which is the newer document and the
+> one a reader reaches last. The round-29 routing reconciliation listed *"the
+> bodies of ADR-0003 and ADR-0005"* as **deliberately unchanged**, on the
+> ground that each is *"a dated record of what was true or of the reference
+> stack's behaviour"*. That disposition is correct for the *Context* section
+> below and **wrong for this line and for "Subprocessor disclosure is unchanged
+> in substance"**, because those two are not records of anything — they are live
+> assertions about audiomax's routing and audiomax's compliance obligations.
+> **A hit you dispositioned wrongly is worse than a hit you missed: it is
+> recorded as reconciled.**
 
 > **Read this before assuming Creole was dropped because it did not work.** It
 > worked. That is the fact this ADR exists to preserve.
@@ -41,8 +62,12 @@ unsupported-language class rather than its counter-example.
 
 ## Consequences
 
-**Simplification.** The message catalogue drops from 20 keys × 4 languages
-(80 strings) to 20 × 3 (**60 strings**). SPIKE A's language-coverage matrix
+**Simplification.** The **`align_*` half** of the message catalogue drops from
+20 keys × 4 languages (80 strings) to 20 × 3 (**60 strings**). *That is the
+`align_*` budget only* (`H20-C1`); the catalogue's total is **~54 keys / ~162
+strings across three languages** (spec §9, recounted for `H26-C3`), and quoting
+the 20/60 pair as the whole catalogue is the defect `H20-C1` was filed for.
+SPIKE A's language-coverage matrix
 covers the three supported languages instead of the eleven the reference stack
 routes — and the scope question that `J18-M4` opened closes with it.
 
@@ -64,11 +89,35 @@ Removing the lens does not remove the class, and a reviewer should not read the
 absence of `ht` from this design as evidence that low-resource-language handling
 has been tested.
 
-**Subprocessor disclosure is unchanged in substance.** ADR-0003 established that
-Gemini TTS is reached via **OpenRouter primary** with **direct Google as
-fallback**. That still holds for `es` and `fr`, so **both parties remain named
-subprocessors** under `CLAUDE.md` constraint 7. The `ht` framing goes; the
-disclosure obligation does not.
+**Subprocessor disclosure changes in substance — CORRECTED 2026-08-10.** This
+paragraph read: *"ADR-0003 established that Gemini TTS is reached via
+**OpenRouter primary** with **direct Google as fallback**. That still holds for
+`es` and `fr`, so **both parties remain named subprocessors** under `CLAUDE.md`
+constraint 7."* **Every clause of that is now false**, and it was a live
+compliance instruction in a committed document.
+
+What is true, per `CLAUDE.md` constraint 7 as corrected on 2026-08-09 (`J29-C3`):
+
+- **TTS is two vendors, not three: Fish Audio `s2-pro` and Lemonfox.** Gemini
+  entered the routing table only as the `ht` route and left scope with `ht`.
+  **audiomax routes nothing to Gemini or to Google**, so Google is **not** a
+  subprocessor of this product and must not be listed as one. Listing a
+  processor that never receives the data is not a harmless over-disclosure — it
+  is a false statement in the artifact whose entire purpose is to be true.
+- **Text still reaches an LLM via OpenRouter**, so OpenRouter remains a named
+  subprocessor.
+- **The LLM's model host is not yet named**, because the model has not been
+  chosen. `CLAUDE.md` records that as open and gating: *"Shipping ingest while
+  the list says 'an LLM' is this constraint breached, not deferred."*
+  **Owner: Comply with Forge · due 2026-08-15**, and in no case later than the
+  first ingest endpoint.
+- **Generated audio reaches our own transcription sidecar.** First-party;
+  disclosed as such, never as a subprocessor.
+
+The `ht` framing goes and **so does half the disclosure**. What does not go is
+the obligation: `CLAUDE.md` constraint 7 is *"users are told where their
+documents go"*, and it is breached by an inaccurate list exactly as it is by a
+missing one.
 
 **What this ADR does not claim.** It does not claim `ht` was infeasible, poorly
 supported, or expensive. It was none of those. It claims only that the owner
@@ -77,7 +126,15 @@ chose three languages instead of four.
 ## Reversal cost
 
 Low, and deliberately kept low. Re-adding `ht` requires: a routing row in §3.5,
-Gemini voice rows in `voices`, 20 catalogue strings, and inclusion in SPIKE A's
-matrix. The per-block language tagging, the substitution machinery and the
-disclosure chain all remain — they were never `ht`-specific. Nothing in this
-removal burns a bridge.
+voice rows in `voices` **plus their `(voice, language)` rows in `voice_langs`
+(§7.1a)** for whichever provider is then chosen, 20 `align_*` catalogue strings,
+and inclusion in SPIKE A's matrix. The per-block language tagging, the
+substitution machinery and the disclosure chain all remain — they were never
+`ht`-specific. Nothing in this removal burns a bridge.
+
+*(This read "Gemini voice rows in `voices`". Two things went stale under it: a
+re-introduction would have to **re-choose a provider**, since audiomax has no
+Gemini or Google integration to switch back on; and `voices.lang` was scalar and
+is **gone** (`H26-C3`) — the `(voice, language)` pairing lives in `voice_langs`,
+so a voice row alone reaches no `GET /voices?lang=ht` caller. A reversal-cost
+estimate that names the wrong table understates the reversal.)*

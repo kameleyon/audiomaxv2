@@ -35,10 +35,20 @@ when the voice changes. Every clip below is therefore synthesized TWICE.
 WHAT IS MEASURED
 ----------------
 `matched_within_drift_pct` at `drift_bound_ms = 250`, computed by the SHIPPED
-code path — `measure.match` for placement and the identical local three-point
-neighbour interpolation for drift. Not a reimplementation with the same name:
-`--self-test` asserts this file reproduces the committed 62.5 / 68.2 / 75.0 for
-`en` / `es` / `fr` EXACTLY, off the committed audio, and fails if it does not.
+code path — `worker/src/match/matchTokens` for placement and the identical local
+three-point neighbour interpolation for drift. Not a reimplementation with the
+same name: `--self-test` asserts this file reproduces the committed
+62.5 / 68.2 / 75.0 for `en` / `es` / `fr` EXACTLY, off the committed audio, and
+fails if it does not.
+
+THE MATCHER MOVED INTO THE PRODUCT IN THIS ROUND, and the reason is the previous
+round's finding. `measure.match` was a monotonic greedy loop with a six-token
+lookahead and NO RE-SYNC PATH; three of six long clips desynced mid-clip and
+never recovered, against full transcripts. That could be diagnosed here and not
+fixed here, because "here" is a measurement script. It is
+`worker/src/match/match.ts` now, with the re-sync path and its own tests, and
+this file calls it — so the number below and the behaviour a reader gets are one
+code path. See ADR-0006.
 
 WHAT IS ALSO MEASURED, AND WHY
 ------------------------------
@@ -63,6 +73,11 @@ measurement and asserts each control FAILS:
                 — the tell this spike has shown every single time
   CTL-STATS     Wilson / McNemar / bootstrap against hand-computable values
   CTL-BOOT      the sentence-block bootstrap widens when blocks are correlated
+  CTL-DESYNC    the admissibility gate fires on a matcher that stops tracking
+  CTL-RESYNC    and does NOT fire when the matcher re-acquires the page after a
+                mid-stream gap wider than its lookahead — with the display
+                tokens it jumped over left unmatched, because a recovery that
+                credited them would be a recovery that invented coverage
 
 Every control is asserted in BOTH directions: it holds on clean input and it
 breaks on mutated input. A control that only ever passes is not a control.
@@ -94,7 +109,7 @@ ROOT = pathlib.Path(__file__).parent
 OUT = ROOT / "out"
 sys.path.insert(0, str(ROOT))
 
-import measure as M          # noqa: E402  the shipped matcher and drift bound
+import measure as M          # noqa: E402  bridge to the shipped matcher + the drift bound
 import harness as H          # noqa: E402  wav_info, SENT_END, LF-safe write_json
 
 ARTIFACT = OUT / "spike-a-voices.json"
@@ -447,6 +462,7 @@ class Mutation:
     drift_bound_ms = DRIFT_MS
     displace = ()            # (token_index, milliseconds) pairs applied to the ASR stream
     truncate_obs = None      # keep only this fraction of the ASR stream (desync control)
+    drop_obs = None          # (start, count): excise a RUN mid-stream (re-sync control)
     active = False
 
     @classmethod
@@ -454,6 +470,7 @@ class Mutation:
         cls.drift_bound_ms = DRIFT_MS
         cls.displace = ()
         cls.truncate_obs = None
+        cls.drop_obs = None
         cls.active = False
 
 
@@ -475,6 +492,13 @@ def apply_displacement(obs):
     """
     if Mutation.truncate_obs is not None:
         obs = obs[:max(1, int(len(obs) * Mutation.truncate_obs))]
+    if Mutation.drop_obs is not None:
+        # A RUN excised from the middle — the divergence the lookahead window
+        # cannot span, injected. Truncation removes the tail and there is nothing
+        # to recover; this removes the middle and leaves a tail that a matcher
+        # with a re-sync path must reach and one without it cannot.
+        at, n = Mutation.drop_obs
+        obs = obs[:at] + obs[at + n:]
     if not Mutation.displace:
         return obs
     out = [dict(o) for o in obs]
@@ -483,6 +507,57 @@ def apply_displacement(obs):
             out[idx]["s"] += ms / 1000.0
             out[idx]["e"] += ms / 1000.0
     return out
+
+
+def asr_absence(obs, disp, lang: str = "fr") -> list:
+    """Display tokens the recogniser NEVER EMITTED, under every relaxation the
+    matcher itself can apply. Returns `[(display_index, token), ...]`.
+
+    ── WHY THIS IS IN THE ARTIFACT AND NOT IN A REPORT ──────────────────────
+    The sentence "the 95 bar is not reachable by fixing the matcher" reframes
+    Phase 6, and it rested on arithmetic that appeared in NO file. That is
+    `J30-m1` — a published figure whose route nobody wrote down — recreated on a
+    bigger claim. It is computed here, by the run that publishes it.
+    """
+    t = M.normalizer(lang, [d[0] for d in disp], [o["w"] for o in obs])
+    kept = [r for r in t["observed"] if r["fold"]]
+    ofold = [r["fold"] for r in kept]
+    oloose = [r["loose"] for r in kept]
+    odigits = {r["digits"] for r in kept if r["digits"]}
+    grouped = t["grouped"]
+
+    # Every contiguous run of 1-3 observed tokens, on both folds. Three because
+    # that is the longest sequence `spokenForms` emits (a year: "mille" "neuf"
+    # "cent"), so a longer window could not place anything a shorter one cannot.
+    def runs(stream):
+        s = set()
+        for i, _ in enumerate(stream):
+            s.add((stream[i],))
+            if i + 1 < len(stream):
+                s.add((stream[i], stream[i + 1]))
+            if i + 2 < len(stream):
+                s.add((stream[i], stream[i + 1], stream[i + 2]))
+        return s
+    seen = runs(ofold) | runs(oloose)
+
+    missing = []
+    for j, row in enumerate(t["display"]):
+        if not row["fold"]:
+            continue                      # punctuation-only: not a placeable word
+        ok = (any(tuple(seq) in seen for seq in row["forms"] if seq)
+              or any(tuple(seq) in seen for seq in row["looseForms"] if seq))
+        if not ok:                        # the many-to-one case: `1 250` heard as `1250`
+            for span in (2, 3):
+                for start in range(max(0, j - span + 1), j + 1):
+                    g = grouped.get(str(start), {}).get(str(span))
+                    if g and g in odigits:
+                        ok = True
+                        break
+                if ok:
+                    break
+        if not ok:
+            missing.append((j, disp[j][0]))
+    return missing
 
 
 def score(obs, text: str, lang: str = "fr") -> dict:
@@ -497,7 +572,8 @@ def score(obs, text: str, lang: str = "fr") -> dict:
     """
     disp = M.display_words(text)
     obs = apply_displacement(obs)
-    matched, unmatched = M.match(obs, disp, lang)
+    full = M.match_full(obs, disp, lang)
+    matched, unmatched, resyncs = full["matched"], full["unmatched"], full["resyncs"]
 
     drift_by_disp, drift_all, drift_interior = {}, [], []
     for i in range(1, len(matched) - 1):
@@ -516,30 +592,35 @@ def score(obs, text: str, lang: str = "fr") -> dict:
     pct = 100.0 * sum(outcome) / len(disp) if disp else 0.0
     srt = sorted(drift_all)
 
-    # ── MATCHER DESYNC (the sixth instrument defect in this spike) ────────────
+    # ── MATCHER DESYNC — the gate, and what it now measures ──────────────────
     #
-    # `measure.match` is a monotonic greedy loop with a SIX-DISPLAY-TOKEN
-    # lookahead. When the recogniser's output diverges from the display text by
-    # more than that window — a dropped clause, a run of numerals heard as words,
-    # a repetition — the display cursor cannot catch up, and it NEVER RECOVERS.
-    # Every remaining observed token is consumed as an unmatched "hallucination"
-    # and every remaining display token is left unplaced.
+    # THE DEFECT THIS GATE WAS BUILT FOR IS FIXED. The matcher was a monotonic
+    # greedy loop with a six-display-token lookahead and NO RE-SYNC PATH: when
+    # the recogniser's output diverged from the page by more than that window the
+    # display cursor could not catch up and NEVER RECOVERED. Measured, not
+    # theorised — `fr-long-narrateur-r1.wav` produced a FULL 1267-token
+    # transcript and the matcher stopped dead at display index 545 of 1185, with
+    # coverage by decile [73, 74, 77, 62, 15, 0, 0, 0, 0, 0]. The audio was fine
+    # and the recognition was fine.
     #
-    # Measured, not theorised: `fr-long-narrateur-r1.wav` produced a FULL 1267-
-    # token transcript — the same count as the clips that scored 70% — and the
-    # matcher stopped dead at display index 545 of 1185. Coverage by decile:
-    # [73, 74, 77, 62, 15, 0, 0, 0, 0, 0]. The audio is fine and the recognition
-    # is fine; the matcher is not.
+    # `worker/src/match/match.ts` has the re-sync path now: after three
+    # consecutive observations the window cannot place, it looks for the nearest
+    # position AHEAD of the cursor where the page reads the way the recogniser is
+    # reading, and resumes there. Forward only, so §6.1's monotonicity survives
+    # the recovery, and bounded, so a recovery cannot silently write off an
+    # arbitrary amount of page.
     #
-    # WHY THIS MATTERS MORE THAN THE NUMBER IT BREAKS. This defect CANNOT OCCUR
-    # on an 8-second clip: there is nowhere to desync to. It appears only at the
-    # clip lengths the evidence floor requires, which means the floor's own
-    # 300 000 ms condition is what exposed it — and it means no measurement taken
-    # at the floor can be trusted until the matcher can re-synchronise.
+    # THE GATE STAYS, and it is not decoration. A re-sync path recovers from a
+    # divergence; it cannot recover from a transcript that STOPS — nothing to
+    # anchor to — and it deliberately refuses a recovery further than
+    # `MAX_RESYNC_SKIP`. Both of those still produce an untracked tail, both are
+    # still inadmissible, and CTL-DESYNC proves the gate fires on the first while
+    # CTL-RESYNC proves it does not fire on the second. A gate deleted because
+    # one cause of its condition was fixed is a gate deleted for the wrong reason.
     #
     # The tell was the one this spike has shown every time, inverted: the drift
-    # DISTRIBUTION is untouched (medians 46-73 ms across every clip, good and
-    # bad alike), and it is the NUMERATOR'S COVERAGE that collapses. A reader
+    # DISTRIBUTION was untouched (medians 46-73 ms across every clip, good and
+    # bad alike), and it was the NUMERATOR'S COVERAGE that collapsed. A reader
     # comparing medians would have seen nothing wrong.
     #
     # Thirds rather than deciles so the same rule works on a 24-token fixture and
@@ -547,6 +628,8 @@ def score(obs, text: str, lang: str = "fr") -> dict:
     n = len(disp)
     third = max(1, n // 3)
     placed = {m["disp_idx"] for m in matched}
+    absent = asr_absence(obs, disp, lang)
+    ceiling_pct = round(100.0 * (n - len(absent)) / n, 1) if n else 0.0
     head = sum(1 for i in range(third) if i in placed) / third
     tailc = sum(1 for i in range(n - third, n) if i in placed) / third
     desynced = bool(head > 0 and tailc < 0.5 * head)
@@ -560,6 +643,54 @@ def score(obs, text: str, lang: str = "fr") -> dict:
         # `provisional` grade exists to enforce one level up.
         "matcher_desynced": desynced,
         "admissible": not desynced,
+        # ── THE CEILING. What NO matcher could beat on this transcript ───────
+        #
+        # Deliberately verbose key names. The two figures this decomposition was
+        # first reported with — 92.2 and 89.5 — each collide with a DIFFERENT
+        # quantity already on disk: 92.2 is `median_drift_ms` for `en` in
+        # spike-a-resultssmall.json (milliseconds), and 89.5 is `match_rate_pct`
+        # for this very clip. A reader grepping either number found a confident
+        # hit that was the wrong quantity, which is the value-collision hazard
+        # this project has now been bitten by four times. A key nobody can
+        # confuse costs nothing.
+        "asr_coverage_ceiling": {
+            "display_tokens": len(disp),
+            "display_tokens_absent_from_transcript": len(absent),
+            "coverage_ceiling_pct_any_matcher": ceiling_pct,
+            "coverage_ceiling_clears_bar": bool(ceiling_pct >= BAR_MATCHED_PCT),
+            "coverage_ceiling_gap_to_bar_pp": round(BAR_MATCHED_PCT - ceiling_pct, 1),
+            "unplaced_display_tokens": len(disp) - len(placed),
+            "unplaced_but_present_in_transcript":
+                (len(disp) - len(placed)) - len(absent),
+            "absent_display_tokens_sample": [tok for _, tok in absent[:25]],
+            "_derivation": (
+                "coverage_ceiling_pct_any_matcher = 100 * (display_tokens - "
+                "display_tokens_absent_from_transcript) / display_tokens. A display token "
+                "counts as ABSENT when NO contiguous run of 1-3 observed tokens equals any "
+                "sequence in that token's `forms` or `looseForms` from "
+                "worker/src/normalize/spokenForms, and no grouped-digit form covering it "
+                "matches an observed token's digits. Those are exactly the relaxations "
+                "worker/src/match/matchTokens can apply, so a token absent here is one the "
+                "recogniser did not emit in any form the matcher could accept, and NO "
+                "matcher can place it. Order-free and one-to-many-free on purpose: it "
+                "ignores monotonicity and lets one observation serve several display "
+                "tokens, so it is a STRICT UPPER BOUND and a real matcher can only do "
+                "worse. It is NOT a prediction of what a better matcher would score. "
+                "The achieved figures are `match_rate_pct` (coverage this matcher reached) "
+                "and `matched_within_drift_pct` (what survived the 250 ms bound); they are "
+                "NOT restated here, so they cannot drift out of agreement with themselves. "
+                "The load-bearing comparison is coverage_ceiling_pct_any_matcher against "
+                "the bar: when the ceiling is below it, the bar is unreachable on this "
+                "transcript no matter what the matcher does."),
+        },
+        # EVERY RECOVERY IS ON THE RECORD. A re-sync writes off the display
+        # tokens it jumps over, so a clip that scores well after twenty of them
+        # is not the same result as one that needed none, and a reader who cannot
+        # see the difference cannot tell a matcher that tracked from a matcher
+        # that kept re-acquiring. They stay in the denominator either way.
+        "resyncs": len(resyncs),
+        "resync_skipped_display_tokens": sum(r["skipped_display_tokens"] for r in resyncs),
+        "resync_detail": resyncs,
         "display_words": len(disp),
         "observed_tokens": len(obs),
         "matched": len(matched),
@@ -857,6 +988,67 @@ def self_test() -> int:
     _check(cut["tracking_ratio"] < base["tracking_ratio"], "CTL-DESYNC",
            "truncating the transcript did not lower the tracking ratio", log)
 
+    # ---- CTL-RESYNC ----------------------------------------------------------
+    # THE REPAIR, falsified on committed audio rather than asserted.
+    #
+    # Excise a RUN of seven observations from the middle of the transcript. Seven
+    # is one more than the lookahead window, which is precisely the divergence
+    # the old matcher could not span: it would stall at the excision and place
+    # nothing after it. The matcher must instead re-acquire the page, reach the
+    # LAST display token, and — this is the half that keeps the control honest —
+    # leave the seven display tokens it jumped over UNMATCHED, because a recovery
+    # that credited them would be a recovery that invented coverage.
+    #
+    # The negative direction is CTL-DESYNC above, on the same audio: a truncated
+    # transcript has no tail to re-acquire, and the gate must still fire there.
+    # A re-sync path that "recovered" from truncation would be finding anchors in
+    # observations that do not exist.
+    Mutation.drop_obs = (6, 7)
+    gap = score(cache["fr"], fx["fr"]["text"], "fr")
+    Mutation.reset()
+    _check(gap["resyncs"] >= 1, "CTL-RESYNC",
+           "seven observations were excised mid-stream and the matcher recorded NO re-sync — "
+           "either the path did not fire or it is not reporting when it does", log)
+    _check(not gap["matcher_desynced"], "CTL-RESYNC",
+           "the matcher did not recover from a mid-stream gap one token wider than its "
+           "lookahead window — this is the defect that produced 29.1% on a 6-minute clip", log)
+    _check(gap["last_matched_display_idx"] == base["last_matched_display_idx"], "CTL-RESYNC",
+           f"after the gap the matcher reached display index "
+           f"{gap['last_matched_display_idx']}, not the {base['last_matched_display_idx']} it "
+           f"reaches on the intact stream — it recovered partially, which is not recovery", log)
+    _check(gap["matched"] < base["matched"], "CTL-RESYNC",
+           "removing seven observations did not reduce the matched count — the recovery is "
+           "crediting display tokens nobody said, which is worse than the desync it fixes", log)
+    _check(gap["resync_skipped_display_tokens"] == base["matched"] - gap["matched"],
+           "CTL-RESYNC",
+           f"the {gap['resync_skipped_display_tokens']} display tokens the re-sync jumped over "
+           f"do not account for the {base['matched'] - gap['matched']} the clip lost — the "
+           f"write-off and the loss must be the same tokens", log)
+
+    # ---- CTL-CEILING ---------------------------------------------------------
+    # The ASR-absence ceiling is the number that reframes Phase 6 — "the bar is
+    # not reachable by fixing the matcher" — so it gets a control, not a comment.
+    #
+    # Three properties, and the third is the one that matters. A quantity derived
+    # from the transcript must MOVE when the transcript does; a "ceiling" that
+    # ignores its own input would be a constant wearing a derivation.
+    base_ceil = base["asr_coverage_ceiling"]
+    _check(base_ceil["coverage_ceiling_pct_any_matcher"] >= base["match_rate_pct"],
+           "CTL-CEILING",
+           f"the ceiling ({base_ceil['coverage_ceiling_pct_any_matcher']}%) is BELOW what the "
+           f"matcher actually placed ({base['match_rate_pct']}%) — an upper bound the run "
+           f"already beat is not an upper bound", log)
+    _check(base_ceil["unplaced_but_present_in_transcript"] >= 0, "CTL-CEILING",
+           "more display tokens are absent from the transcript than are unplaced, which is "
+           "arithmetically impossible: every absent token must also be unplaced", log)
+    Mutation.truncate_obs = 0.5
+    halved = score(cache["fr"], fx["fr"]["text"], "fr")
+    Mutation.reset()
+    _check(halved["asr_coverage_ceiling"]["coverage_ceiling_pct_any_matcher"]
+           < base_ceil["coverage_ceiling_pct_any_matcher"], "CTL-CEILING",
+           "half the transcript was removed and the ceiling did not fall — it is not being "
+           "derived from the observations at all", log)
+
     # ---- CTL-STATS -----------------------------------------------------------
     # Hand-computable values. If these drift, every interval below is decoration.
     lo, hi = wilson_ci(18, 18)
@@ -978,12 +1170,12 @@ def cmd_measure(cross: bool) -> int:
         s = score(obs, text, "fr")
         info = H.wav_info(p)
         s.update({
-            # NOT `lang` + `audio_seconds`. See `_art_stale_gap` in the artifact:
-            # doc-check's [ART-STALE] leg (iii) resolves a scored row's audio as
-            # `${row.lang}.wav`, which cannot name a per-VOICE clip. Emitting
-            # those two key names here would make the gate red for a reason that
-            # is not a defect in this measurement, and hide the real gap. The
-            # provenance is therefore carried EXPLICITLY, by path and by hash.
+            # NOT `lang` + `audio_seconds`. A result here is per-(lang, VOICE) —
+            # the shape `voice_langs` is keyed by — and `${lang}.wav` cannot name
+            # such a clip. The provenance is therefore carried EXPLICITLY, by
+            # path and by hash. doc-check's [ART-STALE] reads this shape now, on
+            # all three legs; see `_art_stale_gap` in the artifact for what
+            # changed and what it quotes.
             "lang_code": "fr",
             "voice": v, "replicate": r, "kind": k,
             "reference_id": VOICES[v]["reference_id"],
@@ -1076,11 +1268,16 @@ def cmd_measure(cross: bool) -> int:
                         "(out/spike-a-crossengine.json:54), on n=17-18 from one 8-second clip. "
                         "They are not measurements of this metric and are not comparable to "
                         "anything below."),
-        "_instrument": ("measure.match + the shipped local three-point neighbour drift, "
-                        "imported not reimplemented. --self-test asserts this file reproduces "
-                        "the committed 62.5 / 68.2 / 75.0 exactly and asserts every control "
-                        "breaks under mutation."),
-        "_mutation_active": bool(Mutation.displace) or Mutation.drift_bound_ms != DRIFT_MS,
+        "_instrument": ("worker/src/match/matchTokens — THE PRODUCT MATCHER, reached through "
+                        "its CLI, not a copy of it — plus the shipped local three-point "
+                        "neighbour drift, imported not reimplemented. The matcher moved out of "
+                        "measure.py in this round for the reason the normaliser moved before "
+                        "it: a matcher that lives only in the instrument means the figure on "
+                        "disk describes software nobody runs. --self-test asserts this file "
+                        "still reproduces the committed 62.5 / 68.2 / 75.0 exactly across the "
+                        "move, and asserts every control breaks under mutation."),
+        "_mutation_active": bool(Mutation.displace) or Mutation.drift_bound_ms != DRIFT_MS
+                            or Mutation.truncate_obs is not None or Mutation.drop_obs is not None,
         "drift_bound_ms": DRIFT_MS,
         "bar_matched_within_drift_pct": BAR_MATCHED_PCT,
         "long_fixture_sha256": _sha(FR_LONG),
@@ -1091,17 +1288,29 @@ def cmd_measure(cross: bool) -> int:
         "comparisons": comparisons,
         "verdict": verdict,
         "cross_engine": cross_rows,
+        # The KEY keeps its name even though the gap it named is closed, because
+        # `tools/doc-check.mjs` refers to this field BY NAME in a comment
+        # ("spike-a-voices.json's own `_art_stale_gap` note, not by review") and
+        # `tools/` belongs to another agent this round. Renaming it here would
+        # close one stale reference by opening another in a file this scope may
+        # not edit — the exact seam CLAUDE.md's second sweep exists to catch.
+        # Renaming both together is a follow-up, carried in the report.
         "_art_stale_gap": (
-            "doc-check [ART-STALE] leg (iii) resolves a scored row's audio as `${row.lang}.wav` "
-            "(tools/doc-check.mjs:1308). That hard-codes ONE audio file per language. The "
-            "roadmap requires the four numbers per (lang, voice) and voice_langs is keyed "
-            "(voice_id, lang), so a per-voice row cannot be expressed in the form this guard "
-            "reads: emitting `lang` + `audio_seconds` here makes the gate red for correct "
-            "rows. Rows below therefore carry `lang_code`, `clip_seconds`, `audio_path` and "
-            "`audio_sha256`, and are covered by legs (i) and (ii) — every wav is in the "
-            "manifest and re-hashed. Leg (iii) covers nothing here. REPAIR: resolve by an "
-            "explicit `audio_path` field when present, falling back to `${lang}.wav`. Owner: "
-            "Forge (tools/doc-check.mjs)."),
+            "CLOSED, and this field records what closed it (J30-m5). It used to read that "
+            "doc-check's [ART-STALE] leg (iii) resolved a scored row's audio as `${row.lang}"
+            ".wav`, which hard-codes ONE clip per language and therefore cannot name a "
+            "per-(lang, voice) row — the shape `voice_langs` is keyed by, and the shape the "
+            "rows below are in. It carried a REPAIR line naming Forge as owner. That repair "
+            "landed in two parts and the note outlived both, which is how a fixed defect goes "
+            "on being reported as open: leg (iii) now resolves `const wanted = typeof "
+            "row.audio_path === 'string' ? row.audio_path : `${row.lang}.wav`;`, and the "
+            "ADMISSION rule that reaches it now accepts this artifact's spellings — "
+            "`const LANG_KEYS = ['lang', 'lang_code'];` and `const SECONDS_KEYS = "
+            "['audio_seconds', 'clip_seconds'];`. Quoted rather than cited by line, because a "
+            "line number is a claim about a file someone else is editing. Every row below is "
+            "therefore covered by all three legs: it is in the manifest, it is re-hashed, and "
+            "its `clip_seconds` is checked against the manifest's duration for the exact "
+            "`audio_path` it names."),
     }
     H.write_json(ARTIFACT, art)
     _print_measure(rows, comparisons, verdict, cross_rows)
@@ -1125,7 +1334,62 @@ def _verdict(comparisons, rows) -> dict:
     disc = [c["discordance_rate"] for c in between if c["discordance_rate"] is not None]
     mean_disc = sum(disc) / len(disc) if disc else 0.0
     n_needed_12 = n_for_mcnemar(12.0, mean_disc) if mean_disc else -1
+
+    # ── J30-M8. THE BOUND MUST CARRY ITS OWN COVERAGE ────────────────────────
+    #
+    # `max_between_voice_abs_diff_pp` is computed over the pairs that HAPPENED to
+    # be comparable, and a reader has no way to see which those were. When one of
+    # three voices had zero admissible long clips, the published "<= 1.9 pp"
+    # bound covered two voices and was read as covering three — and at the SHORT
+    # length the same pair the bound excludes differ by 8.3 pp, 4.4x the bound.
+    # A bound is a claim about a set; the set is now emitted beside it.
+    covered = sorted({r["voice"] for r in long_rows})
+    all_voices = sorted({r["voice"] for r in rows if r["kind"] == "long"})
+    uncovered = [v for v in all_voices if v not in covered]
+    # TWO different denominators, and conflating them is how "12 of the 3 pairs"
+    # gets published. `between` counts CLIP pairs; the coverage claim is about
+    # VOICE pairs, and one voice pair contributes up to four clip pairs at two
+    # replicates each. Both are emitted, each with its own name.
+    voice_pairs_seen = {tuple(sorted((c["a"].split("#")[0], c["b"].split("#")[0])))
+                        for c in between}
+    voice_pairs_possible = len(covered) * (len(covered) - 1) // 2
+    short_between = [c for c in comparisons
+                     if c["comparison_type"] == "between_voice" and c["kind"] == "short"]
+    short_b_abs = [abs(c["diff_pp"]) for c in short_between]
+    max_short = round(max(short_b_abs), 1) if short_b_abs else None
+    max_long = round(max(b_abs), 1) if b_abs else None
+    max_within = round(max(w_abs), 1) if w_abs else None
+    sig_within = sum(1 for c in within if c["significant_at_05"])
+    coverage = (
+        f"The between-voice bound below is a claim about {len(covered)} of {len(all_voices)} "
+        f"voices: {covered or 'none'}. "
+        + (f"NOT COVERED: {uncovered} — no admissible long clip, so no long-length "
+           f"between-voice difference involving {'them' if len(uncovered) > 1 else 'it'} was "
+           f"measured and the bound says nothing about "
+           f"{'them' if len(uncovered) > 1 else 'it'}. "
+           if uncovered else "Every voice is covered. ")
+        + f"It rests on {len(between)} clip pairs spanning {len(voice_pairs_seen)} of the "
+          f"{voice_pairs_possible} voice pairs those voices admit. "
+        + (f"AND IT IS LENGTH-SPECIFIC: at the SHORT length the largest between-voice "
+           f"difference is {max_short} pp against {max_long} pp at the long length"
+           f"{f' ({round(max_short / max_long, 1)}x)' if max_long else ''}. The short arm is "
+           f"24 display tokens, where one token is 4.2 pp and a bound of this size cannot be "
+           f"resolved there at all, so the two are not in contradiction — but a bound quoted "
+           f"without its length is quoted without its meaning. "
+           if max_short is not None and max_long else "")
+        + (f"READ IT AGAINST THE NOISE FLOOR, NOT AGAINST ZERO: the same voice re-sampled "
+           f"differs by up to {max_within} pp, and {sig_within} of {len(within)} within-voice "
+           f"replicate pairs are themselves significant at .05. A between-voice difference "
+           f"smaller than {max_within} pp is not evidence of a voice effect."
+           if max_within is not None else ""))
     return {
+        "bound_covers_voices": covered,
+        "bound_does_not_cover_voices": uncovered,
+        "between_voice_clip_pairs": len(between),
+        "between_voice_pairs_seen": sorted("+".join(p) for p in voice_pairs_seen),
+        "between_voice_pairs_possible": voice_pairs_possible,
+        "max_between_voice_abs_diff_pp_short": max_short,
+        "_coverage": coverage,
         "within_voice_abs_diff_pp": w_abs,
         "between_voice_abs_diff_pp": b_abs,
         "max_within_voice_abs_diff_pp": round(max(w_abs), 1) if w_abs else None,
@@ -1160,6 +1424,23 @@ def _print_measure(rows, comparisons, verdict, cross_rows) -> None:
               f"{r['matched_within_drift_pct']:>6} {f'[{lo}, {hi}]':>14} "
               f"{str(r['median_drift_ms']):>7} {str(r['p95_drift_ms']):>8} "
               f"{r['clip_seconds']:>7}")
+    # The ceiling, beside the score it bounds. Printed for every clip because a
+    # bound quoted from one clip is a bound quoted without its spread.
+    print(f"\n  what NO matcher could beat on these transcripts "
+          f"(bar: >= {BAR_MATCHED_PCT}%)\n")
+    print(f"  {'clip':28} {'n_disp':>6} {'absent':>7} {'ceiling':>8} {'vs bar':>8} "
+          f"{'placed':>7} {'in bound':>9}")
+    for r in rows:
+        c = r["asr_coverage_ceiling"]
+        print(f"  {r['audio_path']:28} {c['display_tokens']:>6} "
+              f"{c['display_tokens_absent_from_transcript']:>7} "
+              f"{c['coverage_ceiling_pct_any_matcher']:>7}% "
+              f"{-c['coverage_ceiling_gap_to_bar_pp']:>+7.1f} "
+              f"{r['match_rate_pct']:>6}% {r['matched_within_drift_pct']:>8}%")
+    print("  `absent` = display tokens the recogniser emitted in NO form the matcher can "
+          "accept.\n  `ceiling` is a STRICT UPPER BOUND (order-free); see `_derivation` "
+          "in the artifact.")
+
     print("\n  pairwise, paired on display index (same text, same tokens)\n")
     print(f"  {'kind':6} {'a':14} {'b':14} {'type':24} {'diff':>6} {'b/c':>9} "
           f"{'p':>9} {'block bootstrap 95%':>22}")
@@ -1177,6 +1458,10 @@ def _print_measure(rows, comparisons, verdict, cross_rows) -> None:
     print(f"  display tokens required to resolve a 12 pp effect at the observed discordance "
           f"({v['mean_between_voice_discordance']}): {v['display_tokens_needed_for_12pp_at_this_discordance']}"
           f"   — the original claim had {v['display_tokens_in_original_claim']}")
+    # The bound is never printed without the set it is a claim about (J30-M8).
+    print(f"\n  coverage: {v['_coverage']}")
+    if v["inadmissible_clips_matcher_desync"]:
+        print(f"  INADMISSIBLE (matcher desync): {v['inadmissible_clips_matcher_desync']}")
     if cross_rows:
         print("\n  the SUBSTITUTED metric on the same audio, computed honestly "
               "(word-level both sides)\n")

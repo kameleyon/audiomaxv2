@@ -80,11 +80,46 @@ BAR_MATCHER_MISS_PCT = 0.0
 # instruments as much as to providers.
 NORMALIZER_CLI = ROOT.parents[1] / "worker" / "src" / "normalize" / "cli.ts"
 
+# ── The MATCHER lives in the product too, as of the re-sync repair ────────
+#
+# It used to be the `match()` function below, in this file. The argument that
+# moved the normaliser was never weaker for the matcher — it was only never
+# acted on, and the cost was exact: the re-sync defect that desynced three of six
+# long clips was diagnosed in a COMMENT in this harness while the product had no
+# matcher to diagnose. `worker/src/match/` is the matcher now, this file calls
+# it, and the figure on disk and the behaviour a reader gets are one code path.
+MATCHER_CLI = ROOT.parents[1] / "worker" / "src" / "match" / "cli.ts"
+
 _NORM_CACHE = {}
+_MATCH_CACHE = {}
 
 
 class NormalizerError(RuntimeError):
     """The product normaliser could not be reached or refused the request."""
+
+
+class MatcherError(RuntimeError):
+    """The product matcher could not be reached or refused the request."""
+
+
+def _node_json(cli: pathlib.Path, payload: dict, err) -> dict:
+    """Run a product CLI with one JSON request and return its one JSON response.
+
+    No fallback and no retry. A matcher or normaliser that silently degrades
+    returns a plausible, wrong number, and CLAUDE.md constraint 2 applies to
+    instruments as much as to providers.
+    """
+    if not cli.exists():
+        raise err(f"the product module is missing: {cli}")
+    body = json.dumps(payload).encode("utf-8")
+    try:
+        proc = subprocess.run([node_binary(), str(cli)], input=body, capture_output=True)
+    except OSError as exc:                                    # node not on PATH
+        raise err(f"cannot run node for {cli}: {exc}") from exc
+    if proc.returncode != 0:
+        raise err(f"{cli} exited {proc.returncode}: "
+                  f"{proc.stderr.decode('utf-8', 'replace').strip()}")
+    return json.loads(proc.stdout.decode("utf-8"))
 
 
 def normalizer(lang: str, display_tokens, observed_tokens) -> dict:
@@ -98,20 +133,8 @@ def normalizer(lang: str, display_tokens, observed_tokens) -> dict:
     key = (lang, tuple(display_tokens), tuple(observed_tokens))
     if key in _NORM_CACHE:
         return _NORM_CACHE[key]
-    if not NORMALIZER_CLI.exists():
-        raise NormalizerError(f"the product normaliser is missing: {NORMALIZER_CLI}")
-    payload = json.dumps({"lang": lang, "display": list(display_tokens),
-                          "observed": list(observed_tokens)})
-    try:
-        proc = subprocess.run([node_binary(), str(NORMALIZER_CLI)],
-                              input=payload.encode("utf-8"), capture_output=True)
-    except OSError as exc:                                    # node not on PATH
-        raise NormalizerError(f"cannot run node for {NORMALIZER_CLI}: {exc}") from exc
-    if proc.returncode != 0:
-        raise NormalizerError(
-            f"{NORMALIZER_CLI} exited {proc.returncode}: "
-            f"{proc.stderr.decode('utf-8', 'replace').strip()}")
-    table = json.loads(proc.stdout.decode("utf-8"))
+    table = _node_json(NORMALIZER_CLI, {"lang": lang, "display": list(display_tokens),
+                                        "observed": list(observed_tokens)}, NormalizerError)
     # CROSS-IMPLEMENTATION CHECK. `norm` below still exists because harness.py
     # and groundtruth.py fold arbitrary tokens through it. Two implementations
     # of one fold is the drift this move was made to end, so every token that
@@ -203,102 +226,66 @@ def transcribe(path: pathlib.Path, lang: str, model_size: str = "base", ctype: s
 # The four fixture tables that used to stand here -- NUM, TENS, ABBREV and
 # `spoken_forms` -- are gone. They are `worker/src/normalize/numerals.ts`,
 # `abbreviations.ts` and `index.ts` now, with tests, and this file reaches them
-# through `normalizer()` above. Nothing imports `spoken_forms` from here; the
-# only consumers of this module are harness.py and groundtruth.py, which use
-# `display_words`, `match` and `norm`.
+# through `normalizer()` above.
+#
+# THE MATCH LOOP THAT STOOD HERE IS GONE TOO. It was a monotonic greedy loop with
+# a six-display-token lookahead and no way back, and this file's own `score()`
+# recorded the consequence: on three of six long clips the display cursor stalled
+# mid-clip and never recovered, against a FULL transcript. That comment could
+# describe the defect and could not fix it, because the thing it described was a
+# measurement script rather than the product. It is `worker/src/match/match.ts`
+# now, with the re-sync path, and `match()` below calls it.
+
+
+def match_full(observed, display, lang="en"):
+    """The product matcher's whole response for this clip.
+
+    `worker/src/match/matchTokens`, reached through its CLI. Memoised per
+    (lang, display, observed) so `score()` and the self-test's repeated scoring
+    of one fixture do not pay a process spawn each.
+    """
+    key = (lang, tuple(d[0] for d in display),
+           tuple((o["w"], o["s"], o["e"]) for o in observed))
+    if key in _MATCH_CACHE:
+        return _MATCH_CACHE[key]
+    res = _node_json(MATCHER_CLI, {
+        "lang": lang,
+        "display": [[d[0], d[1], d[2]] for d in display],
+        "observed": [{"w": o["w"], "s": o["s"], "e": o["e"]} for o in observed],
+    }, MatcherError)
+    # CROSS-IMPLEMENTATION CHECK, the same one `normalizer()` carries and for the
+    # same reason: `norm` below still exists because harness.py and
+    # groundtruth.py fold arbitrary tokens with it. Two implementations of one
+    # fold is drift with nothing watching it, so every token that crosses this
+    # bridge is checked against the product fold and a disagreement RAISES.
+    for side, toks in (("display", [d[0] for d in display]),
+                       ("observed", [o["w"] for o in observed])):
+        for tok, fold in zip(toks, res["folds"][side]):
+            if norm(tok) != fold:
+                raise MatcherError(
+                    f"fold disagreement on {tok!r}: this file folds to {norm(tok)!r}, "
+                    f"{MATCHER_CLI.name} folds to {fold!r}. Two implementations of one "
+                    f"rule have drifted; fix the product one.")
+    _MATCH_CACHE[key] = res
+    return res
 
 
 def match(observed, display, lang="en"):
     """
-    Monotonic greedy match of observed tokens onto display tokens, allowing one
-    display token to consume SEVERAL observed tokens via its spoken forms.
+    Match observed tokens onto display tokens -- THE PRODUCT MATCHER, not a copy.
 
-    Monotonic BY CONSTRUCTION: the display cursor never moves backwards. That is
-    the first invariant of the match contract (spec 6.1), and it is what stops a
-    highlight jumping in a book containing "the" four thousand times.
+    The algorithm is `worker/src/match/match.ts`. It is monotonic over display
+    offsets (spec 6.1 invariant 1), places one display token from SEVERAL
+    observations through its spoken forms, and -- since the re-sync repair --
+    RE-ACQUIRES the page after a divergence wider than its lookahead window
+    instead of stalling for the remainder of the clip.
 
-    Returns (matched, unmatched_observed). An unmatched observed token is a
-    candidate HALLUCINATION -- the failure prediction could not produce and
-    observation can. It is only a real one if it also fails to correspond to any
-    display token, which is why normalisation must run FIRST: otherwise the
-    metric reports a correct engine as an inventing one.
+    Returns (matched, unmatched_observed), unchanged, because harness.py,
+    groundtruth.py and voices.py all destructure exactly that. `match_full`
+    exposes the re-syncs for a caller that wants to report them.
     """
-    table = normalizer(lang, [d[0] for d in display], [o["w"] for o in observed])
-    forms = [row["forms"] for row in table["display"]]
-    # Zipped, never looked up by value: two observed tokens can be identical
-    # dicts and `list.index` would return the first of them.
-    obs_rows = [(o, row) for o, row in zip(observed, table["observed"]) if row["fold"]]
-    obs = [o for o, _ in obs_rows]
-    obs_fold = [row["fold"] for _, row in obs_rows]
-    obs_digits = [row["digits"] for _, row in obs_rows]
-    disp_fold = [row["fold"] for row in table["display"]]
-    grouped = table["grouped"]
-
-    matched, unmatched, di, oi = [], [], 0, 0
-    while oi < len(obs) and di < len(display):
-        placed = False
-        # Try each display token in a bounded window, longest spoken form first.
-        for j in range(di, min(di + 6, len(display))):
-            for seq in sorted(forms[j], key=len, reverse=True):
-                if not seq:
-                    continue
-                got = [obs_fold[oi + k] for k in range(len(seq)) if oi + k < len(obs)]
-                if got == seq:
-                    matched.append({
-                        "obs_w": " ".join(o["w"] for o in obs[oi:oi + len(seq)]),
-                        "disp": display[j][0], "disp_idx": j,
-                        "cs": display[j][1], "ce": display[j][2],
-                        "s": obs[oi]["s"], "e": obs[oi + len(seq) - 1]["e"],
-                        # J22-M2 -- which tokens needed the normalizer to be
-                        # placed at all. `expect_hard` in fixtures.json is the
-                        # falsification condition for a 100% match rate and was
-                        # evaluated by nothing; it cannot be evaluated without
-                        # this bit, because "matched" alone does not distinguish
-                        # a numeral bridged by spoken_forms from one the ASR
-                        # happened to write back as digits.
-                        "via_normalizer": seq != [disp_fold[j]],
-                    })
-                    oi += len(seq)
-                    di = j + 1
-                    placed = True
-                    break
-            if placed:
-                break
-        # MANY-TO-ONE. French (and most of Europe) writes a thousands separator as
-        # a SPACE -- "1 250" is two display tokens -- while the engine hears one
-        # token, "1250". Without this the display side can never be fully placed
-        # and fr sits permanently below the bar for a formatting convention, not
-        # for a recognition failure. The inverse of the numeral-expansion case.
-        #
-        # The GROUP is decided by `worker/src/normalize/groupedDigitForm`, not
-        # here: the rule that a run of display tokens is heard as one is part of
-        # the normaliser, and the form this file used to compute joined the
-        # digits of whatever tokens it was handed -- so `pages 47` joined to "47"
-        # and could record the word "pages" as matched against an observation of
-        # "47". The product rule requires every token in the run to carry a digit.
-        if not placed and oi < len(obs):
-            digits_heard = obs_digits[oi]
-            for span in (3, 2):
-                if di + span > len(display):
-                    continue
-                group = display[di:di + span]
-                joined = grouped.get(str(di), {}).get(str(span))
-                if digits_heard and joined == digits_heard:
-                    for k, g in enumerate(group):
-                        matched.append({
-                            "obs_w": obs[oi]["w"], "disp": g[0], "disp_idx": di + k,
-                            "cs": g[1], "ce": g[2], "s": obs[oi]["s"], "e": obs[oi]["e"],
-                            "shared_token": True, "via_normalizer": True,
-                        })
-                    oi += 1
-                    di += span
-                    placed = True
-                    break
-        if not placed:
-            unmatched.append(obs[oi])
-            oi += 1
-    unmatched.extend(obs[oi:])
-    return matched, unmatched
+    res = match_full(observed, display, lang)
+    return res["matched"], res["unmatched"]
 
 
 def split_unmatched(unmatched, display, lang):

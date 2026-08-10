@@ -41,6 +41,63 @@ export function foldToken(token: string): string {
   return token.normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}_']/gu, '');
 }
 
+/**
+ * The SECOND fold — the same token with its diacritics removed.
+ *
+ * This is NOT a replacement for `foldToken` and the matcher must never reach for
+ * it first. It exists because the two sides of the comparison disagree about
+ * accents for reasons that have nothing to do with what was said:
+ *
+ *   - the recogniser restores accents imperfectly, in both directions, and
+ *     writes `eleve` for `élève` often enough to be measured;
+ *   - extracted document text loses them — a PDF with a subset font, a scan run
+ *     through OCR, text pasted out of a system that never had them.
+ *
+ * Measured on SPIKE A's `fr` long fixture: 92 of 1186 display tokens (7.8%) were
+ * spoken correctly, recognised correctly, and dropped by the matcher because one
+ * side spelled `bibliotheque` and the other `bibliothèque`. A dropped token is a
+ * SKIPPED word for a reader following the caret.
+ *
+ * The cost is real and is why this is ranked below the exact fold rather than
+ * folded into it: `ou`/`où`, `sur`/`sûr`, `des`/`dès` in French and `ano`/`año`
+ * in Spanish are different words that collapse here. The matcher therefore tries
+ * the exact fold at every candidate position first and only then this one, and
+ * records the relaxation on the match so a caller can see it (`match_conf` drops
+ * to the `normalized` band, never `exact`).
+ */
+export function foldTokenLoose(token: string): string {
+  return foldToken(token).normalize('NFD').replace(/\p{Mn}/gu, '').normalize('NFC');
+}
+
+/**
+ * ELISION. `l'équipe` is ONE token on the page and TWO in the transcript.
+ *
+ * Word-level ASR tokenisers split French elision at the apostrophe and attach
+ * the apostrophe to the SECOND half — faster-whisper emits `l` then `'équipe`,
+ * `aujourd` then `'hui`, `d` then `'être`. The display token matches neither
+ * half, so the whole word is unplaceable: 59 of 1186 display tokens (5.0%) on
+ * SPIKE A's `fr` long fixture, and they are not evenly spread — `l'`, `d'`,
+ * `qu'`, `n'`, `c'` are the most frequent openings in written French.
+ *
+ * Both splits are offered because the convention is not universal: some engines
+ * write `l'` + `équipe`. Offering a form costs a candidate; asserting one would
+ * be prediction, which §6.1 removed.
+ *
+ * Split at the FIRST interior apostrophe only. `c'est-à-dire` has two and is a
+ * single display token whose fold has already lost its hyphens; enumerating
+ * every partition of it would produce candidates no engine emits.
+ */
+export function elisionForms(folded: string): string[][] {
+  const at = folded.indexOf("'");
+  if (at <= 0 || at >= folded.length - 1) return [];
+  const head = folded.slice(0, at);
+  const tail = folded.slice(at + 1);
+  return [
+    [head, `'${tail}`],
+    [`${head}'`, tail],
+  ];
+}
+
 /** Display tokens with the character offsets a highlight is addressed by. */
 export interface DisplayToken {
   readonly text: string;
@@ -93,10 +150,25 @@ export function spokenForms(displayToken: string, lang: Lang): string[][] {
     if (runs.length) forms.push(runs);
   }
   for (const expansion of abbreviationForms(folded, lang)) forms.push([expansion]);
+  for (const split of elisionForms(folded)) forms.push(split);
 
-  return forms
-    .map((seq) => seq.map(foldToken).filter(Boolean))
-    .filter((seq) => seq.length > 0);
+  // De-duplicated: `elisionForms` and an abbreviation expansion can arrive at the
+  // same sequence, and a repeated candidate makes the matcher do the same work
+  // twice and a reader of `forms` believe there is more evidence than there is.
+  const seen = new Set<string>();
+  const out: string[][] = [];
+  for (const seq of forms) {
+    // `foldToken` is applied to each element rather than to the sequence: an
+    // elision half is already folded, and folding it again is a no-op, but a
+    // numeral expansion arrives as a word and is not.
+    const cleaned = seq.map(foldToken).filter(Boolean);
+    if (cleaned.length === 0) continue;
+    const key = cleaned.join('\u0000');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(cleaned);
+  }
+  return out;
 }
 
 /**
@@ -137,15 +209,25 @@ export const MAX_GROUPED_TOKENS = 3;
 export interface NormalizedToken {
   readonly token: string;
   readonly fold: string;
+  /** `fold` with diacritics removed. Ranked BELOW `fold`; see `foldTokenLoose`. */
+  readonly loose: string;
   readonly digits: string;
   readonly forms: string[][];
+  /** `forms` under the loose fold, positionally parallel to `forms`. */
+  readonly looseForms: string[][];
 }
 
 export function normalizeToken(token: string, lang: Lang): NormalizedToken {
+  const forms = spokenForms(token, lang);
   return {
     token,
     fold: foldToken(token),
+    loose: foldTokenLoose(token),
     digits: digitsOf(token),
-    forms: spokenForms(token, lang),
+    forms,
+    // Positionally parallel so the matcher can fall back at a candidate WITHOUT
+    // re-deriving which form it was trying — the two arrays are one table read
+    // twice, not two tables that can disagree.
+    looseForms: forms.map((seq) => seq.map(foldTokenLoose)),
   };
 }

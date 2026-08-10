@@ -149,15 +149,15 @@
     "group": "languages",
     "lang": "fr",
     "words": 24,
-    "median_overlap_pct": 56.6,
-    "pct_overlap_50": 62.5,
+    "median_overlap_pct": 60.1,
+    "pct_overlap_50": 66.7,
     "median_signed_start_delta_ms": 5.0,
     "median_abs_error_ms": 49.7,
-    "p95_abs_error_ms": 216.8,
+    "p95_abs_error_ms": 191.3,
     "worst_tokens": [
-      "participants.",
       "à",
-      "a"
+      "a",
+      "en"
     ],
     "display_words": 24,
     "display_coverage_pct": 100.0,
@@ -248,11 +248,11 @@
   {
     "group": "holdout",
     "lang": "es",
-    "words": 24,
-    "median_overlap_pct": 49.5,
-    "pct_overlap_50": 50.0,
-    "median_signed_start_delta_ms": -35.8,
-    "median_abs_error_ms": 42.3,
+    "words": 27,
+    "median_overlap_pct": 51.0,
+    "pct_overlap_50": 51.9,
+    "median_signed_start_delta_ms": -36.0,
+    "median_abs_error_ms": 40.0,
     "p95_abs_error_ms": 117.8,
     "worst_tokens": [
       "El",
@@ -260,13 +260,10 @@
       "que"
     ],
     "display_words": 31,
-    "display_coverage_pct": 77.4,
+    "display_coverage_pct": 87.1,
     "unpaired_display": [
-      "comite",
       "reunio",
-      "Prof.",
       "Adams",
-      "señalo",
       "por",
       "ciento"
     ],
@@ -280,26 +277,22 @@
   {
     "group": "holdout",
     "lang": "fr",
-    "words": 24,
-    "median_overlap_pct": 46.0,
-    "pct_overlap_50": 41.7,
-    "median_signed_start_delta_ms": -16.3,
-    "median_abs_error_ms": 48.9,
-    "p95_abs_error_ms": 156.3,
+    "words": 28,
+    "median_overlap_pct": 47.0,
+    "pct_overlap_50": 46.4,
+    "median_signed_start_delta_ms": -26.9,
+    "median_abs_error_ms": 40.4,
+    "p95_abs_error_ms": 120.0,
     "worst_tokens": [
       "Le",
       "de",
-      "euros"
+      "3"
     ],
     "display_words": 33,
-    "display_coverage_pct": 72.7,
+    "display_coverage_pct": 84.8,
     "unpaired_display": [
-      "comite",
-      "reuni",
       "a",
       "note",
-      "couts",
-      "augmente",
       "pour",
       "cent",
       "unite."

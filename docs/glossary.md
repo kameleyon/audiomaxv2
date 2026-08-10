@@ -94,7 +94,70 @@ headline feature rests on. It runs after synthesis and after transcription, and
 it enforces four things: monotonicity, a **250 ms** drift bound, a coverage
 floor, and two separate confidences. A highlight on the wrong word looks exactly
 like a highlight on the right word, which is why these are invariants and not
-quality signals. *Owner: §6.1, roadmap Phase 6.*
+quality signals.
+
+**It re-synchronises, forward only** — trigger 3 consecutive unmatched tokens,
+anchor 3 consecutive matches, bounded at 200. Without that path a single
+mismatch cost the *rest of the clip*: monotonic greedy with a six-token
+lookahead desynced **3 of 6** long clips. Backward re-sync is refused — a
+highlight moving backwards through the page is worse than a missing one, and it
+breaks monotonicity. Diacritic and elision folds are **ranked strictly below the
+exact fold**, so a loose fold can never steal a token that had an exact match
+available.
+
+**It lives in `worker/src/match/`, and that is the point.** It used to be
+`measure.match`, a function *inside the measurement script* — which is why its
+defect could be diagnosed in a comment and never fixed. A component that exists
+only inside the instrument measuring it cannot be repaired without contaminating
+the measurement. *Owner: §6.1, roadmap Phase 6; see
+[ADR-0006](architecture/0006-the-matcher-re-synchronises-and-lives-in-the-product.md).*
+
+### Drift, and the 250 ms drift bound
+**Drift** is the gap between when a word is *highlighted* and when it is
+*spoken* — the absolute error between a word's timestamp and its true position
+in the audio. The **drift bound** is the largest gap the product will accept:
+**250 ms**, stored as `sync_drift_bound_ms`.
+
+**The bound was fixed *before* the measurement that scores against it, and that
+ordering is the point** (`H17-C3`). As first written the metric was circular:
+§6.1 deferred the bound to the match step, the match step is gated by SPIKE A,
+and SPIKE A's pass metric was defined *in terms of* the bound — so whoever chose
+the bound chose the pass rate, after seeing the data, without having to defend
+it. It may still move, but only **publicly and with the reason recorded**; it
+may not be moved to make a language pass. The same discipline governs the
+evidence floor and the language scope.
+
+Drift is not the same as *accumulating* drift. A constant lead of 400 ms is a
+bad highlight everywhere; a drift that grows at 1 ms per second is fine for a
+minute and **tens of seconds off** across a 9-hour book. Whether accumulation
+exists is **open** (`H26-M7`) — SPIKE A's slopes are near zero but its
+confidence intervals are wide on 137–143 seconds of audio, and the artifact says
+so itself: *"no accumulation was detected, which on this n is not the same as
+none existing."* *Owner: §6.1, roadmap Phase 0 (SPIKE A).*
+
+### Match rate vs `matched_within_drift_pct` — two numbers, both percentages, different questions
+These are routinely confused, they are both reported per language, and they can
+even take **the same value on the same run** — SPIKE A produced `95.8` for both,
+for different things, in adjacent clauses. **Always carry the metric name.**
+
+| | **Match rate** | **`matched_within_drift_pct`** |
+| --- | --- | --- |
+| Question | *Did an observed word find a display token at all?* | *Was the word placed within **250 ms** of where it is actually spoken?* |
+| Failure it detects | Recognition invented a word, or the text moved under it | The highlight is on the right word at the wrong **time** |
+| Ignores | Timing entirely | Words that never matched |
+| Role | Diagnostic | **The pass bar** — `>= 95` |
+
+A run can score 100% match rate and fail badly on drift: every word found its
+place on the page, and every highlight fires a third of a second early. The
+reverse is rarer but worse, because a confidently misplaced word looks exactly
+like a correct one.
+
+The companion metrics are `median_abs_error_ms`, **`p95_abs_error_ms`** (bar:
+`<= 300`; the tail is what a listener notices) and **`hallucination_rate`**
+(bar: `<= 2`) — observed tokens matching no display text. Hallucination has its
+own bar because a timing bound cannot see it: a fluently invented token can be
+timed to 50 ms and mapped to the wrong word, and `p95` will look excellent.
+*Owner: §6.1, roadmap Phase 0.*
 
 ### `asr_conf`
 **"The engine was sure it heard this word."** Recognition confidence, per word,
@@ -110,6 +173,47 @@ confident and wrong. **Per-word highlighting keys on `match_conf` only**, agains
 `min(asr_conf, match_conf)`, retained for the **segment-level** `degraded`
 decision against `align_conf_threshold`. **Clients must not use it to decide
 whether to highlight a word.** *Owner: §6.3.*
+
+### `sync_grade`
+**What we know about word sync for one `(language, voice)` pair — asked and
+answered *before* the user pays.** It is a column on `voice_langs` (§7.1a), it
+is **NOT NULL with DEFAULT `unmeasured`**, and the read path coalesces, so **no
+API ever returns a NULL `sync_grade`**. Four values:
+
+| Value | Meaning | Effect on the quote |
+| --- | --- | --- |
+| **`unmeasured`** | No measurement exists for this pair | Counts as **not established** |
+| **`provisional`** | Measured, but **below the evidence floor** | Counts as **not established** |
+| **`at_or_above_bar`** | Measured at or above the SPIKE A bar, on sufficient evidence | Counts as **word-sync available** |
+| **`below_bar`** | Measured below the bar | Sets `transcription_unreliable` |
+
+**Do not confuse a missing row with `unmeasured`.** A row's *presence* says the
+voice can speak the language at all; `sync_grade` says whether that pair has
+been *measured*. A voice with no row for a language is not returned by
+`GET /voices?lang=` at all.
+
+**`provisional` exists because three grades would force a lie.** The French
+voice result — 88.2% / 94.4% / 100% across three voices — is `15/17` vs `17/18`
+vs `18/18` **on one 8-second clip**. With three grades the only options are to
+call the 100% voice *established* on the strength of two tokens, or to discard a
+real signal. Both are wrong. The direction is plausible, the mechanism is sound,
+and **the number is two tokens** — the schema has to say all three at once.
+
+**The evidence floor is fixed BEFORE the measurement that will use it**, for the
+same reason as the drift bound. `at_or_above_bar` requires **all** of:
+`sync_metric` = `matched_within_drift_pct` at 250 ms (a *substituted* metric is
+how `H26-B1` turned a failing result into an unmeasurable one, so the column is
+an enum and the next substitution is a migration somebody has to defend);
+`sync_matched_words >= 200` (at today's `n` of 14–24 one token is 5.6 points, so
+a bar of 95 is unresolvable — the nearest reachable values are 94.4 and 100);
+and `sync_longest_clip_ms >= 300000` (an offset that *accumulates* cannot appear
+on an 8-second clip by construction, and all of SPIKE A is 63 seconds of audio).
+
+The store **ships empty** — `sync_grade` is not seeded from SPIKE A, because
+SPIKE A clears none of those three conditions. *Owner: §7.1a; grades reach the
+user through `GET /voices?lang=` with their evidence (`sync_pct`,
+`sync_matched_words`, `sync_measured_at`) so a client can say "measured on 18
+words, one clip" instead of presenting a bare verdict.*
 
 ### `align_status`
 Per **rendition** (not per segment — timings belong to a specific voice's audio).
@@ -301,6 +405,42 @@ A stable identifier for one audit finding — `J-B1`, `R14-A1`, `H17-C3`,
 explicitly as `fixed`, `open` or `disputed` — **never silence**. Reports live in
 `resources/audits/` and are committed.
 
+### Severity — five tiers, and the three verdicts they produce
+Newcomers reliably conflate the **severity** of a finding with the **verdict**
+of an audit. They are different vocabularies and only one of them opens the
+gate.
+
+**Severity** grades a single finding. Jury's rubric is fixed and every finding is
+exactly one of five:
+
+| Tier | Meaning | Blocks a commit? |
+| --- | --- | --- |
+| **Blocker** | Ships nothing until fixed — legal, security, a broken core flow | **Yes** |
+| **Critical** | Fix before launch — significant audience exclusion, data loss | **Yes** |
+| **Major** | Fix before next release — clear friction, comprehension failure | **No, if owned and dated** |
+| **Minor** | Fix when convenient — polish, edge cases, micro-copy | No |
+| **Polish** | Optional improvement — taste, parity with best-in-class | No |
+
+**Verdict** grades the whole audit, and it is *computable* from the severities
+rather than a judgement call:
+
+| Verdict | Condition | Commit |
+| --- | --- | --- |
+| `PASS` | Zero open Blocker, Critical **or Major** | Permitted |
+| `PASS WITH FIXES` | Zero open Blocker or Critical. Majors open, **each with a named owner and a date** | Permitted |
+| `FAIL` | Any open Blocker or Critical | **Blocked** |
+
+Two things a newcomer gets wrong. **`PASS WITH FIXES` is the normal healthy
+state, not a near-miss** — any single Polish nit makes `PASS` unreachable by
+definition, so a rule that only `PASS` permits a commit is a gate that never
+opens, which is worse than a loose one. And **a Major's owner and date are what
+make it non-blocking**; an unowned or undated Major is not a Major that waits,
+it is a gate that stays shut.
+
+**Severity is the reviewer's, never the author's** — grading your own defect is
+what Jury's Rule 8, *"Never grade your own work"*, forbids. `CLAUDE.md` is
+authoritative for the gate table; this entry mirrors it.
+
 ### SPIKE A
 The one Phase 0 experiment still gating word sync: transcription accuracy per
 language, over **the three supported languages**, returning
@@ -310,3 +450,34 @@ bar), `hallucination_rate`, and compute cost per audio-hour. Proposed bar:
 movable **by** the measurement and not after it. *(Owner: Forge · due
 2026-08-14.)* Until it returns, `transcription_unreliable` has no producer rule
 and word-sync quality is **measured and below bar** for `en`/`es`/`fr` (SPIKE A).
+
+**And since 2026-08-10 we know what the bar is bound by.** The matcher was
+repaired ([ADR-0006](architecture/0006-the-matcher-re-synchronises-and-lives-in-the-product.md))
+and the long French clips moved from 20.9–71.4 to **78.4–86.3**, with the three
+desynced clips recovered and **inadmissible clips 3 → 0**. **Nothing clears 95** —
+and the reason is no longer the matcher:
+
+> On the best long clip, **95 of 1186 display tokens appear in the transcript in
+> no form the matcher could accept**, so the ceiling for *any* matcher is
+> **92.0%**. Across all six long clips: **89.8%–92.0%, i.e. 3.0–5.2 pp below the
+> 95 bar.**
+
+**On chapter-length audio the remaining gap is recognition, not matching** — even
+a perfect matcher cannot clear 95 with faster-whisper `base`, so the open
+question is the ASR configuration itself.
+
+**But the constraint is length-dependent, and that is the part to remember.** On
+the 8–10 s control clips, two of three ceilings are **95.8% — above the bar** —
+while those clips score 70.8 and 75.0, so there the loss is **drift, not
+recognition**. *(The third short clip's ceiling is 91.7%, below the bar; it
+scores 66.7, so drift still dominates.)* **The ceiling is a property of clip
+length, not a constant of the corpus.**
+
+The figure is `coverage_ceiling_pct_any_matcher` in
+`aligner/spike-a/out/spike-a-voices.json`. It is a **strict upper bound** — the
+derivation is deliberately order-free and one-to-many-free, so a real matcher can
+only do worse, and it is **not** a prediction of what a better matcher would
+score. **Do not confuse it with `match_rate_pct`** (coverage this matcher
+achieved) or `matched_within_drift_pct` (what survived the 250 ms bound); the
+artifact deliberately does not restate either inside the ceiling block, because
+copying them is exactly what produced an earlier mislabelling.

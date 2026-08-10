@@ -145,7 +145,7 @@ bumped, and the obvious fix corrupts its meaning. *(Forge · with the
 **`J31-m2`** — `doc-check` reports abstention counts per document with no
 locations, so *"those are read by hand"* names nothing a human can read. Print
 `doc:line`. *(Forge · 2026-08-13.)*
-**Postgres version undeclared** — Minor, not Major: gating **both** 15 and 17 is
+**`J31-m3`** — Postgres version undeclared. Minor, not Major: gating **both** 15 and 17 is
 strictly stronger than a guess, so there is no exposure; what is missing is a
 declaration. *(Atlas · 2026-08-14.)*
 

@@ -1,0 +1,45 @@
+# audiomax aligner sidecar — the LEAN stack. This is the recommended image.
+#
+# It runs the pipeline spec §6.1 ships — `ASR -> forced alignment -> match` —
+# with faster-whisper for ASR and torchaudio's wav2vec2 bundles for forced
+# alignment. That is the SAME MECHANISM whisperx implements: whisperx force-
+# aligns a Whisper transcript against a wav2vec2 CTC model, and for `en`/`es`/`fr`
+# the models it selects are torchaudio bundles, not Hugging Face checkpoints
+# (`whisperx/alignment.py: DEFAULT_ALIGN_MODELS_TORCH` — en=WAV2VEC2_ASR_BASE_960H,
+# es=VOXPOPULI_ASR_BASE_10K_ES, fr=VOXPOPULI_ASR_BASE_10K_FR). `aligner/spike-a/fa.py`
+# already drives torchaudio MMS_FA directly, and its results are the ones SPIKE A
+# actually reports; whisperx never executed there.
+#
+# WHY NOT whisperx AS A DEPENDENCY — measured, not asserted. whisperx 3.8.6
+# declares `pyannote-audio>=4.0.0`, `torchvision~=0.23.0` and `torchcodec` as HARD
+# requirements. pyannote is speaker diarization, which this product never asks
+# for: the audio is a single synthesized voice, so it has one speaker by
+# construction. Those three pull lightning, torchmetrics and torchvision behind
+# them. `aligner/requirements-whisperx.txt` exists so the cost of the named tool
+# is a number in `spike-e/out/` rather than an argument, and
+# `spike-e/out/spike-e-results.json` carries both totals.
+#
+# INSTALL ORDER MATTERS AND IS ENFORCED IN THE DOCKERFILE. torch must come from
+# the PyTorch CPU index. The PyPI `torch` wheel for linux/amd64 depends on the
+# `nvidia-*` CUDA runtime wheels — ~2.5 GB of GPU libraries this container never
+# loads, since SPIKE A's own result is CPU-only.
+
+# ── ASR ──────────────────────────────────────────────────────────────────────
+# ctranslate2 is the int8 CPU inference engine faster-whisper runs on, and is the
+# thing actually doing the work under `compute_type="int8"`.
+faster-whisper==1.2.1
+ctranslate2==4.8.1
+
+# ── Forced alignment ─────────────────────────────────────────────────────────
+# Version pinned here, INDEX chosen in the Dockerfile. torchaudio carries the
+# wav2vec2 alignment bundles for all three supported languages.
+torch==2.8.0
+torchaudio==2.8.0
+
+# ── Support ──────────────────────────────────────────────────────────────────
+# numpy is left to the resolver's floor rather than pinned to the workstation's
+# 1.26.4: that pin is UNSATISFIABLE alongside whisperx, which requires >=2.1.0,
+# and pinning one file to a version the sibling file cannot use is how the two
+# stop being comparable. Recorded rather than silently dropped.
+numpy>=2.1.0
+soundfile==0.12.1

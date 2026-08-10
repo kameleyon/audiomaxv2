@@ -1,0 +1,121 @@
+{
+  "spike": "C",
+  "question": "Does Fish Audio bill UTF-8 bytes or characters?",
+  "date": "2026-08-10",
+  "model": "s2-pro",
+  "reference_id": "a5d7dcbb81b4472ea0e240af3edaae7d",
+  "lang": "fr",
+  "published_rate": "$15.00 / M UTF-8 bytes (docs.fish.audio, read 2026-08-10)",
+  "text_sent": "Été âgé ôté créée âgée aînée réélue élevée hébétée étêtée écrémée ôtée préférée dégénérée éphémère désespérée élève élégante œuvre répétée célébrée éprouvée assiégée déléguée Été âgé ôté créée âgée aînée réélue élevée hébétée étêtée écrémée ôtée préférée dégénérée éphémère désespérée élève élégante œuvre répétée célébrée éprouvée assiégée déléguée Été âgé ôté créée âgée aînée réélue élevée hébétée étêtée écrémée ôtée préférée dégénérée.",
+  "chars_sent": 440,
+  "utf8_bytes_sent": 590,
+  "non_ascii_chars": 150,
+  "bytes_per_char": 1.3409,
+  "sha256_text_utf8": "f0934b3d23a7afe73c123ea59707b71cecd2d546d45224f07e9a1adbd617b620",
+  "usd_if_billed_per_char": "0.006600",
+  "usd_if_billed_per_utf8_byte": "0.008850",
+  "request": {
+    "endpoint": "https://api.fish.audio/v1/tts",
+    "method": "POST",
+    "model_header": "s2-pro",
+    "normalize": true,
+    "format": "wav",
+    "sample_rate": 44100
+  },
+  "response": {
+    "http_status": 200,
+    "audio_bytes": 2175020,
+    "audio_seconds": 24.66,
+    "elapsed_seconds": 4.1,
+    "headers": {
+      "Date": "Mon, 10 Aug 2026 14:56:13 GMT",
+      "Content-Type": "audio/wav",
+      "Transfer-Encoding": "chunked",
+      "Connection": "close",
+      "ratelimit-current-concurrency": "1",
+      "ratelimit-limit-concurrency": "5",
+      "x-fishaudio-datacenter": "us-san-jose",
+      "x-xss-protection": "1; mode=block",
+      "x-frame-options": "SAMEORIGIN",
+      "cf-cache-status": "DYNAMIC",
+      "Server-Timing": "cfEdge;dur=71,cfOrigin;dur=2078",
+      "expect-ct": "max-age=86400, enforce",
+      "referrer-policy": "same-origin",
+      "x-content-type-options": "nosniff",
+      "Server": "cloudflare",
+      "CF-RAY": "a28fd886dab3125e-EWR",
+      "alt-svc": "h3=\":443\"; ma=86400"
+    },
+    "reports_usage": false,
+    "audio_sha256": "3b100715646ae00dfc946ab49f2c6b3cabbbfd9f17a6a0d79c0570b2debc0b21",
+    "audio_kept_on_disk": false
+  },
+  "ledger": {
+    "endpoint": "https://api.fish.audio/wallet/self/api-credit",
+    "credit_before": "16.521720",
+    "credit_after": "16.512870",
+    "credit_decimal_places": 6,
+    "usd_charged": "0.008850",
+    "ledger_updated_at": "2026-08-10T14:57:15.987000Z",
+    "read_method": "re-read after settlement; the debit posts ~1 min after the call, so the in-run 10 s poll saw an unsettled ledger"
+  },
+  "verdict": "UTF8_BYTES",
+  "reasoning": "Charged $0.008850. The UTF-8-byte model predicts $0.008850 (residual $0.000000); the character model predicts $0.006600 (residual $0.002250). Billing is per UTF-8 byte. Every quote for es/fr computed from a character count is UNDERSTATED by the accent load of the text.",
+  "residual_vs_char_model": "0.002250",
+  "residual_vs_byte_model": "0.000000",
+  "package_ledger_after": {
+    "type": "plus",
+    "total": 250000,
+    "balance": 174369,
+    "extra_balance": 0,
+    "updated_at": "2026-07-20T19:26:16.018000+00:00",
+    "billing_period": "month",
+    "_redacted": "stripe_subscription_id, stripe_price_id, user_id, team_id, _id"
+  },
+  "reconciled_at": "2026-08-10T15:04:33Z",
+  "billed_calls_total": 1,
+  "implied_usd_per_audio_second": "0.000359",
+  "production_impact": {
+    "fr_typography_upper_bound": {
+      "fr_plain_ascii_punctuation_ratio": 1.0316,
+      "fr_epub_typography_ratio": 1.0433,
+      "fr_epub_understated_pct": 4.33,
+      "transform": "U+2019 apostrophe, U+2026 ellipsis, U+202F before ; : ! ?, U+2014 dash"
+    },
+    "corpus": "aligner/spike-a/fixtures.json",
+    "corpus_sha256": "463b07d93c333b5127f9bf28da9547f583dfc264b1948143a6fd4e2d5a2a0a26",
+    "reference_book_chars": 540000,
+    "fish_usd_per_1k_utf8_bytes": "0.015",
+    "note": "Accent load on REAL prose. The probe text was engineered to a ratio of 1.34 to make the billing unit unmistakable; production es/fr text sits near 1.03. Both numbers are true and they answer different questions -- the first identifies the unit, the second sizes the money.",
+    "by_language": {
+      "en": {
+        "corpus_chars": 1444,
+        "corpus_utf8_bytes": 1444,
+        "bytes_per_char": 1.0,
+        "quote_understated_pct": 0.0,
+        "reference_book_quoted_usd_if_chars": "8.10",
+        "reference_book_invoiced_usd_bytes": "8.10",
+        "shortfall_usd": "0.00"
+      },
+      "es": {
+        "corpus_chars": 1462,
+        "corpus_utf8_bytes": 1497,
+        "bytes_per_char": 1.0239,
+        "quote_understated_pct": 2.39,
+        "reference_book_quoted_usd_if_chars": "8.10",
+        "reference_book_invoiced_usd_bytes": "8.29",
+        "shortfall_usd": "0.19"
+      },
+      "fr": {
+        "corpus_chars": 1840,
+        "corpus_utf8_bytes": 1892,
+        "bytes_per_char": 1.0283,
+        "quote_understated_pct": 2.83,
+        "reference_book_quoted_usd_if_chars": "8.10",
+        "reference_book_invoiced_usd_bytes": "8.33",
+        "shortfall_usd": "0.23"
+      }
+    }
+  },
+  "finding": "VERDICT: Fish Audio bills UTF-8 BYTES, not characters. Confirmed by one billed call on 590 UTF-8 bytes / 440 characters of accented French: the account ledger (GET /wallet/self/api-credit) moved 16.521720 -> 16.512870, a charge of $0.008850. 590 bytes x $15/1M = $0.008850 exactly, residual $0.000000. The character model predicts $0.006600 and is wrong by 34%. The published rate ($15.00 / M UTF-8 bytes, docs.fish.audio) is therefore confirmed in BOTH the unit and the magnitude, and spec 5's '$0.015 / 1k (bytes)' is correct as written. Tier C can be retired for this row.\n\nMECHANISM NOTES. POST /v1/tts reports no usage: not in the body (it returns raw audio) and not in any response header (all 16 captured verbatim in this artifact; there is no x-usage, no credit header, nothing). Usage is observable ONLY as a balance delta on the wallet endpoint, and that delta posts roughly ONE MINUTE after the call -- the first read of this probe polled for 10 seconds, saw no movement, and would have reported the call as free. Any future cost telemetry must poll the wallet ledger asynchronously; it cannot read cost off the TTS response, and it must not treat an unsettled ledger as a zero charge. The debit landed on api-credit, not on the subscription package (package updated_at was unchanged at 2026-07-20), so API usage is pay-as-you-go and independent of the monthly plan quota.\n\nCONSEQUENCE FOR THE QUOTE CONTRACT (CLAUDE.md constraint 4). Credits are denominated in characters and every render is preflighted with an EXACT quote. A character-denominated quote for a Fish render is understated for es and fr and exact for en -- the error appears only in the two non-English languages, which is the population least able to notice it. On real prose the understatement is +2.4% (es) and +2.8% (fr), rising to +4.3% for French with genuine EPUB typography (curly apostrophes, guillemets, em dashes and narrow no-break spaces are 2-3 bytes each). The fix is not to redenominate credits: keep characters as the user-facing unit, and compute the COST side of the quote from spoken_bytes. spoken_bytes already appears in the GET /quote payload alongside \"display_characters\", \"spoken_characters\" and \"inserted_characters\" -- this spike cements it as REQUIRED for any Fish-routed segment, not optional.\n\nSECOND FINDING, opposite direction, and it is a Major. Spec 5's cost table reads \"$8.10 floor; $16-32 for accented fr\", and audit finding J-m3 says \"accented Latin is 2-4x under byte billing\". That is wrong by an order of magnitude. 2-4x requires text that is 100-300% non-ASCII; French and Spanish prose measure 1.028 and 1.024 bytes per character, and even French with full EPUB typography reaches only 1.043. The reference book costs $8.33 in French, not $16-32. The byte penalty is real, it is small, and the cost model currently overstates the worst case by ~4x while the quote understates the actual charge by ~3% -- two errors in opposite directions, which is why neither cancelled out or got noticed."
+}

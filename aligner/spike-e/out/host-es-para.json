@@ -1,0 +1,60 @@
+{
+  "label": "host-windows-workstation-CONTENDED",
+  "measurement": "SPIKE E aligner container sizing",
+  "audio": "es-para.wav",
+  "lang": "es",
+  "asr_model": "base",
+  "compute_type": "int8",
+  "stages": {
+    "import_faster_whisper_s": 30.43,
+    "import_torch_s": 0.0,
+    "asr_model_load_s": 2.806,
+    "transcribe_wall_s": 88.736,
+    "transcribe_cpu_s": 92.344,
+    "align_model_load_s": 7.329,
+    "align_wall_s": 19.467,
+    "align_cpu_s": 53.703
+  },
+  "peak_rss_after_stage_bytes": {
+    "baseline_interpreter": 15515648,
+    "import_faster_whisper": 235028480,
+    "import_torch": 235032576,
+    "asr_model_load": 516558848,
+    "transcribe": 516558848,
+    "align_model_load": 1125736448,
+    "align": 4399599616
+  },
+  "failures": [],
+  "_kind": "MEASURED unless a field says otherwise",
+  "audio_seconds": 74.93,
+  "torch_version": "2.8.0+cpu",
+  "asr_word_count": 222,
+  "align_backend": "torchaudio",
+  "align_bundle": "VOXPOPULI_ASR_BASE_10K_ES",
+  "align_emission_frames": 3746,
+  "derived": {
+    "realtime_factor_transcribe_only": 1.1843,
+    "realtime_factor_pipeline_amortised": 1.4441,
+    "realtime_factor_pipeline_including_model_load": 1.5793,
+    "cpu_seconds_per_audio_second_transcribe_only": 1.2324,
+    "cpu_seconds_per_audio_second_pipeline": 1.9492,
+    "cold_start_seconds_asr_plus_align": 10.135,
+    "cores_actually_received": 1.35,
+    "thread_efficiency": 0.337,
+    "peak_rss_max_bytes": 4399599616,
+    "_align_included": true,
+    "_note": "realtime_factor_*_pipeline collapses to the transcribe-only figure when _align_included is false. A pipeline factor that silently omits a stage is the SPIKE A defect, so the flag is emitted beside it.",
+    "peak_rss_max_mib": 4195.8
+  },
+  "hardware": {
+    "platform": "win32",
+    "platform_release": "2022Server",
+    "machine": "AMD64",
+    "cpu_model": "AMD64 Family 23 Model 1 Stepping 2, AuthenticAMD",
+    "logical_cpus_visible": 8,
+    "cpu_threads_configured": 4,
+    "python": "3.12.6",
+    "cgroup_memory_limit_bytes": null,
+    "_note": "logical_cpus_visible is what the PROCESS sees. Under Docker without --cpuset-cpus this is the host count even when --cpus caps the quota, so it is not a statement about how much CPU the container may use."
+  }
+}

@@ -26,8 +26,24 @@ API calls, $0.00.** Finding `R14-C6`; SPIKE B's TTS half is closed.
 re-verified against the call sites rather than the comments. The **language
 finding is unchanged** — `ht` is served natively by a Gemini model in production
 and is not a launch blocker. **The route and the model name in the first draft
-were wrong**, and the correction adds a second named subprocessor and an open
-conflict with `CLAUDE.md`. See [Consequences](#consequences).
+were wrong.**
+
+**Both consequences that correction created have since lapsed, and this
+paragraph is the last place that still said otherwise (corrected 2026-08-10).**
+It read *"the correction adds a second named subprocessor and an open conflict
+with `CLAUDE.md`."* Neither holds for audiomax:
+
+- **The second named subprocessor was Google, and audiomax has no Google path.**
+  `CLAUDE.md` constraint 7 now reads *"TTS is TWO vendors, not three: Fish Audio
+  `s2-pro` and Lemonfox"*, and the LLM host reached through OpenRouter **has not
+  been chosen and therefore cannot be named** — an item owned by Comply with
+  Forge, due 2026-08-15 and in no case later than the first ingest endpoint.
+- **The constraint-2 conflict is closed by removal, not by fix** — see this
+  ADR's banner. The chain described below is the *reference stack's*; this
+  product has nothing to fall back through.
+
+See [Consequences](#consequences), which is a record of the reference stack's
+shape and of what audiomax must not copy — not an open item on audiomax.
 
 Design intent, not gate approval — see [the status note](README.md#what-accepted-means-here-and-what-it-does-not).
 
@@ -133,17 +149,39 @@ Both must be named:
 
 Disclosing only the model vendor would leave the party that actually receives the
 request undisclosed — and the first draft of this ADR made exactly that mistake.
-Uploads already reach an LLM and up to three TTS vendors; generated audio
-additionally reaches our own transcription sidecar, which is first-party and is
-disclosed as such rather than as a subprocessor.
+That reasoning is the durable part of this section and it survives the scope
+change; the vendor list attached to it does not.
+
+> **Corrected 2026-08-10.** This read *"Uploads already reach an LLM and up to
+> three TTS vendors."* **TTS is two vendors — Fish Audio `s2-pro` and
+> Lemonfox** (`CLAUDE.md` constraint 7, spec §3.5); text additionally reaches an
+> LLM via **OpenRouter**, whose **model host is not yet chosen and therefore
+> cannot be named** (Comply with Forge · due 2026-08-15, and no later than the
+> first ingest endpoint). Generated audio reaches our own transcription sidecar,
+> which is first-party and is disclosed as such rather than as a subprocessor.
+> **audiomax routes nothing to Gemini or Google.**
 
 Users uploading medical, legal or unpublished material have no other notice, and
 for blind users — who cannot casually inspect where a document went — the
 asymmetry is sharper.
 
-### OPEN — the reference implementation's shape violates `CLAUDE.md` constraint 2
+### CLOSED BY REMOVAL — the reference implementation's shape violates `CLAUDE.md` constraint 2
 
-**This is unresolved, and it is recorded here rather than discovered in Phase 5.**
+> **This heading read `OPEN` and the paragraph below it read *"This is
+> unresolved, and it is recorded here rather than discovered in Phase 5"* until
+> 2026-08-10.** It is not unresolved: `ht` left scope on 2026-08-08 (ADR-0005)
+> and the Gemini route left with it, so **audiomax has no chain to fall back
+> through**. Nothing below is an open item on this product. It is kept, in full,
+> as a record of a shape audiomax must not adopt — and because a design whose
+> *reference* implementation violates a stated constraint is worth knowing
+> about when someone proposes copying it.
+>
+> Three documents recorded this as open after ADR-0003's own banner closed it —
+> `README.md`, `docs/architecture/README.md`, and this ADR's Status section.
+> **One claim, four homes, one fixed.** That is `J31-M4`, and it is the
+> project's most recurrent defect.
+
+**What follows describes the reference stack, not audiomax.**
 
 > `CLAUDE.md` constraint 2 — **No fallback launch.** *"A primary path must never
 > depend on a fallback. Degraded paths are emergency-only and must be **visible,
@@ -167,28 +205,44 @@ served it, with no record of which one did.
 - and, if the fallback is what habitually serves `ht`, a **primary path that
   depends on a fallback** — the thing constraint 2 forbids by name.
 
-**The question, unresolved:** does audiomax route `ht` through OpenRouter, direct
-Google, or both — and if both, what makes the switch *visible, reasoned and
-announceable*: a `provider` value on the rendition, a disclosure span, an
-`align_reason`, or a decision that there is no fallback at all and a failure is a
-failure?
+**The question this section posed — *"does audiomax route `ht` through
+OpenRouter, direct Google, or both"* — has no subject.** `ht` is refused at
+§3.5's no-route row and produces no audio; neither Google nor Gemini appears in
+audiomax's provider set. It is answered by removal, and **no Phase 5 item is
+owed against it.**
 
-**It has no owner and no date today.** It lands in **roadmap Phase 5 — TTS
-router**, which is reviewed by Halo, Tongue, Scribe and Jury, and it must be
-assigned there before that phase is built. This ADR does not resolve it, and a
-resolution that quietly adopts the reference stack's chain would be a constraint
-violation, not a default.
+*(Until 2026-08-10 this closed with **"It has no owner and no date today. It
+lands in roadmap Phase 5 — TTS router … and it must be assigned there before
+that phase is built."* That is the `J30-M5` shape exactly: a struck line that
+still **instructs** work — here, scheduling a Phase 5 owner to resolve a
+fallback chain that does not exist, in the phase whose adapter list had already
+been corrected to remove Gemini. A stale record is inert; a stale
+**instruction** is not.)*
+
+**The rule that outlives the question stands, and is general:** a resolution
+that quietly adopts a primary→fallback chain is a constraint-2 violation, not a
+default — for any provider, in any phase.
 
 ### The voice catalogue must actually carry the rows
 
-`voices` gains the Gemini rows, **seeded in Phase 1**, with a `provider` value
-that distinguishes the routes rather than flattening them to "Google". Without
-them an `ht` user calling `GET /voices?lang=ht` reaches an **empty list** — and
-every degraded-path remedy this design offers a blind user is *"choose a
-different voice"*. A remedy that names a door which does not exist is worse than
-no remedy (`N12-C3`). The Phase 0 accessibility harness is required to fail on
-exactly that defect (see
+**The general rule holds and is what this section is for:** a language the
+product claims to support must return a **non-empty** `GET /voices?lang=` — with
+a `provider` value that distinguishes routes rather than flattening them to a
+vendor family — because every degraded-path remedy this design offers a blind
+user is *"choose a different voice"*, and a remedy naming a door that does not
+exist is worse than no remedy (`N12-C3`). The Phase 0 accessibility harness is
+required to fail on exactly that defect (see
 [ADR-0004](0004-the-accessibility-gate-is-an-api-conformance-harness.md)).
+
+*(Corrected 2026-08-10. This read **"`voices` gains the Gemini rows, seeded in
+Phase 1"** — a live build instruction, in a committed document, to seed a
+catalogue with a provider audiomax does not integrate, for a language that left
+scope. It would also have seeded the wrong table: `voices.lang` was scalar and
+is **gone** (`H26-C3`), and the `(voice, language)` pairing that `?lang=` filters
+on lives in `voice_langs` (§7.1a). `ht` itself is now the canonical **unsupported**
+language — it is refused at the §3.5 no-route row with an announced
+`blocked_language_unsupported`, which is a different and correct behaviour from
+an empty voice list.)*
 
 ### `blocked_language_unsupported` loses its example but keeps its class
 

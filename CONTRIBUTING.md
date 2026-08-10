@@ -9,11 +9,32 @@ finding — report it rather than working around it.
 ## 1. Phase 0 scaffolding exists; no product feature does
 
 There is a `package.json`, a pnpm lockfile, three workspaces, two services with
-`/health`, and **66 tests** — 57 in `worker` (`node --test`) and 9 in `aligner`
-(`python -m unittest`), which is what `pnpm test` runs. *(This said 30, and had
-since the scaffold; the gates that count their own trials are guarded by
-`[SD-SELFTEST]` and this number was guarded by nothing.)* **Nothing ingests a document, synthesizes audio or
-serves a segment** — every product path is still design-only.
+`/health`, and a test suite **`pnpm test` counts for you**. Use **`pnpm test`**,
+not `pnpm -r test`: `aligner/` is deliberately not a pnpm workspace, so `-r`
+silently drops its tests.
+
+```bash
+pnpm test        # worker + apps/web + apps/mobile (node --test) + aligner (unittest)
+```
+
+**Nothing ingests a document, synthesizes audio or serves a segment** — every
+product path is still design-only.
+
+> **This sentence no longer states a total, and that is the fix.** The count has
+> been wrong in **four consecutive rounds**, in a different way each time:
+> **30** (stale since the scaffold, guarded by nothing) → **66** (round 31's
+> correction, which counted `worker` and `aligner` and forgot the two client
+> workspaces existed) → **76** (correct for one day) → **99** (Forge's matcher
+> work took `worker` from 57 to 80). `J31-M4` was filed because this number was
+> fixed in one of its two homes; the round that fixed it published a *new* wrong
+> value into **both**; and the round after that went stale again through nobody's
+> error at all — a peer simply wrote tests.
+>
+> **A number that changes whenever anyone does their job cannot live in prose in
+> three files.** No `[SD-*]` guard checks it. So the durable answer is the
+> command, not the integer: **`pnpm test` prints the total, and it is never
+> stale.** If you need a figure for a document, run it — and expect it to have
+> moved.
 
 Use **`pnpm`** (pinned via `packageManager`), not `npm`. Zero runtime
 dependencies by design: `node:http`, `node:test` and the Python stdlib. Nothing
@@ -21,7 +42,7 @@ emits, so there is no build output to ignore.
 
 What exists is: the working agreement (`CLAUDE.md`), the root `README.md`, this
 file, `CODEOWNERS`, `docs/`, the documentation gate (`tools/doc-check.mjs`),
-brand assets, and **28 audit records**.
+brand assets, and **32 audit records**.
 
 Contributing today means **documents and decisions**: picking up a Phase 0 item,
 running a spike and recording its evidence, or correcting a document that has
@@ -33,7 +54,7 @@ drifted.
 | --- | --- | --- | --- |
 | 1 | `README.md` | 5 | What the product is, what exists, what the rules are |
 | 2 | `CLAUDE.md` | 4 | The working agreement and the commit gate — **authoritative** |
-| 3 | `docs/architecture/` | 4 | The four decisions that shape everything, and *why* |
+| 3 | `docs/architecture/` | 4 | The **six** decisions that shape everything, and *why* — including the one that was reversed |
 | 4 | `docs/glossary.md` | 2 | The vocabulary you cannot infer |
 
 Then, if you have them locally: the spec, the roadmap, and the most recent audit
@@ -47,7 +68,7 @@ record.
 
 ```bash
 node tools/doc-check.mjs             # must exit 0
-node tools/doc-check.mjs --self-test # must report 93 passed, 0 failed
+node tools/doc-check.mjs --self-test # must report 94 passed, 0 failed
 node .github/scripts/secret-scan.mjs --self-test  # must report 32 passed, 0 failed
 node .github/scripts/secret-scan.mjs              # reads STAGED BLOBS, not the disk
 node supabase/tests/verify_voice_langs.mjs        # static proofs, read from the migration text
@@ -206,6 +227,41 @@ This is a `grep`, not a memory exercise, and it runs **before** the edit:
 
 Doing this *after* editing is what failed four times: you patch where you
 remember the concept living, and memory misses roughly a third of the sites.
+
+### Cite by quotation, never by line number
+
+Step 2's `grep -F` takes a **string**. Write your citations so they are runnable
+by the same command: quote the sentence you mean and name the file. A line
+number is true only for the version of the file that no longer exists, and in a
+round where several people are editing, the file is being reflowed **while you
+cite it**. `J30-M10` and `J31-M2` are the same defect a round apart; the ruling
+after the second is general — **quotation, in every artifact, including SQL
+comments and JSON.**
+
+### When more than one person edits in the same round
+
+The pass above runs **before** you edit, which is the one moment it cannot see a
+peer's work: their change does not exist yet when you grep for it. Round 31 put
+three agents on disjoint scopes; each was clean inside its own scope and **four
+of that round's six new Majors were between them.**
+
+> **Disjoint scopes do not compose. They only fail to overlap.**
+
+So a second sweep runs **after everyone has finished and before the gate**, and
+it belongs to whoever is coordinating — no individual author owns a sentence
+that spans two scopes:
+
+1. **Union** the identifiers *everyone* touched, not just your own.
+2. Grep each across all four precedence documents **plus every author's files**,
+   including SQL, JSON and CI YAML. A stale claim in a migration comment is a
+   stale claim.
+3. Grep for the phrases that describe **someone else's work as pending** —
+   `out of scope`, `no CI job`, `still`, `due 20`, `Owner:`, `REPAIR:`,
+   `not yet`. These are the sentences that go stale by another person's success,
+   and every one of them is checked against what the round actually did.
+
+`CLAUDE.md` is authoritative for this; the section is *"When more than one agent
+writes in a round — the second sweep"*.
 
 ---
 

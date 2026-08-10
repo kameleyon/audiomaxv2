@@ -12,8 +12,29 @@ stops, so the real per-call cost can be read off the provider dashboard before
 anything is scaled. Do not remove that flag.
 
 Providers per spec 3.5:
-  en  -> Lemonfox
-  es, fr -> Gemini via OpenRouter (primary), direct Google (fallback) -- ADR-0003
+  en     -> Lemonfox
+  es, fr -> Fish Audio `s2-pro`
+
+CORRECTED (J29-C3, in code). These four lines read *"es, fr -> Gemini via
+OpenRouter (primary), direct Google (fallback) -- ADR-0003"* for four rounds
+after every DOCUMENT was fixed. Gemini was only ever the Haitian Creole TTS
+route; `ht` left scope on 2026-08-08 (ADR-0005) and the route left with it.
+Rounds 29-31 corrected spec 3.5, CLAUDE.md constraint 7, the README, spec 11,
+roadmap Phase 5 and the ADR-0003 banner, and nobody opened the script that makes
+the calls -- the document-vs-implementation seam in its purest form.
+
+TWO THINGS WERE WRONG HERE AND ONLY ONE OF THEM WAS THE COMMENT.
+
+The dispatch below is DATA-DRIVEN off `fixtures.json:provider`, which has said
+`fish` for `es` and `fr` since the owner's correction, so no wrong audio is
+being generated today and no measurement on disk is affected. But the dispatch
+ended in a bare `else` that sent ANY unrecognised provider string to Gemini via
+OpenRouter. That is a live defect, not a stale comment: a retired route reachable
+by DEFAULT, which is CLAUDE.md constraint 2 (no fallback launch) and constraint 7
+(the user is told where their document goes) in executable form -- an unexpected
+fixture would have sent document text to a vendor the subprocessor list does not
+name. The route is deleted, not commented out, and the dispatch now REFUSES an
+unknown provider.
 """
 import argparse
 import hashlib
@@ -90,37 +111,24 @@ def synth_fish(text: str, ref_id: str, key: str) -> bytes:
         return r.read()
 
 
-def synth_openrouter(text: str, voice: str, key: str) -> bytes:
-    """
-    Gemini TTS via OpenRouter -- the PRIMARY path per ADR-0003.
-
-    NOTE the constraint-2 problem this makes concrete: motionmax falls back to
-    direct Google on failure with only a console.warn. audiomax may not copy that
-    shape (CLAUDE.md constraint 2 -- no fallback launch). So this function does
-    NOT fall back. It fails loudly and the spike records which path answered.
-    """
-    raw = post(
-        "https://openrouter.ai/api/v1/audio/speech",
-        {"model": "google/gemini-3.1-flash-tts-preview", "input": text, "voice": voice, "response_format": "pcm"},
-        {"Authorization": f"Bearer {key}", "HTTP-Referer": "https://audiomax.ai"},
-    )
-    # SPIKE A finding: Gemini TTS via OpenRouter accepts ONLY response_format="pcm".
-    # It returns HEADERLESS PCM, so it must be wrapped before any tool that reads
-    # audio containers will touch it. 24 kHz mono s16le is Gemini's documented
-    # output and matches what the reference stack assumes.
-    if raw[:4] == b"RIFF" or raw[:3] == b"ID3":
-        return raw
-    if raw[:1] not in (b"{", b"["):
-        return wav_wrap(raw)
-    try:
-        j = json.loads(raw)
-    except Exception:
-        return raw
-    import base64
-    for k in ("audio", "data", "b64_json"):
-        if k in j:
-            return base64.b64decode(j[k])
-    raise RuntimeError(f"unrecognised OpenRouter TTS response: {list(j)[:6]}")
+# THE GEMINI-VIA-OPENROUTER TTS ROUTE WAS HERE, AND IT IS DELETED.
+#
+# It was the Haitian Creole route and nothing else. `ht` left scope on
+# 2026-08-08 and CLAUDE.md is explicit that it "is not deferred; it is out", so a
+# live function that can reach that vendor is not dormant code -- it is an
+# undisclosed subprocessor one dispatch mistake away, and the dispatch that could
+# make the mistake was directly below it.
+#
+# Two findings are kept because deleting the code should not delete what it cost
+# to learn:
+#   - Gemini TTS via OpenRouter accepted ONLY `response_format="pcm"` and
+#     returned HEADERLESS PCM (24 kHz mono s16le), so it had to be wrapped before
+#     any tool that reads audio containers would touch it.
+#   - The reference stack falls back to direct Google on failure with only a
+#     console.warn. This file never copied that shape, on constraint 2. That
+#     restraint is now moot for TTS and remains the rule for every other route.
+#
+# `wav_wrap` survives: `groundtruth.py` wraps headerless PCM from other sources.
 
 
 def sha256(b: bytes) -> str:
@@ -216,12 +224,21 @@ def main() -> None:
         dest = OUT / (f"{lang}-holdout.wav" if os.environ.get("HOLDOUT") else f"{lang}.wav")
         t0 = time.time()
         try:
+            # EXHAUSTIVE, and it REFUSES rather than falling through. The bare
+            # `else` that stood here routed every unrecognised provider string to
+            # the retired Gemini/OpenRouter path -- a vendor the subprocessor
+            # list does not name, reached by default, on document text. Refusing
+            # is the only safe answer: the two providers below are the two spec
+            # 3.5 routes, and a third value in `fixtures.json` is a typo or an
+            # unreviewed decision, neither of which should reach a network call.
             if spec["provider"] == "lemonfox":
                 audio = synth_lemonfox(spec["text"], spec["voice"], env["LEMONFOX_API_KEY"])
             elif spec["provider"] == "fish":
                 audio = synth_fish(spec["text"], spec["reference_id"], env["FISH_AUDIO_API_KEY"])
             else:
-                audio = synth_openrouter(spec["text"], spec["voice"], env["OPENROUTER_API_KEY"])
+                sys.exit(f"{lang}: fixtures.json names provider {spec['provider']!r}, which is "
+                         f"not a spec 3.5 TTS route. The routes are 'lemonfox' (en) and 'fish' "
+                         f"(es, fr). Nothing is synthesized and no text leaves this machine.")
         except urllib.error.HTTPError as e:
             body = e.read()[:300].decode("utf-8", "replace")
             print(f"  {lang}: HTTP {e.code} from {spec['provider']} -- {body}")
