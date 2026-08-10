@@ -24,9 +24,9 @@
  * EXIT    0 clean · 1 findings · 2 not applicable (private docs absent)
  */
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 
 const DOCS = {
   spec: 'resources/specs/2026-08-08-audiomax-backend-design.md',
@@ -49,6 +49,22 @@ const DOCS = {
   adr5: 'docs/architecture/0005-haitian-creole-is-removed-from-scope.md',
 };
 const PRIVATE = new Set(['spec', 'roadmap']);   // gitignored by owner decision
+// The OTHER harness's trial count, obtained by execution and memoised. Returns
+// null when it cannot be established, and the caller treats null as a finding.
+let _ssTrials;
+function secretScanTrials() {
+  if (_ssTrials !== undefined) return _ssTrials;
+  try {
+    const out = execFileSync('node', ['.github/scripts/secret-scan.mjs', '--self-test'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const m = out.match(/(\d+)\s+trials/);
+    _ssTrials = m ? Number(m[1]) : null;
+  } catch {
+    _ssTrials = null;   // a non-zero exit means its own trials failed
+  }
+  return _ssTrials;
+}
+
 const CURRENT_REVISION = 19;
 
 // J22-M5 / H26 — THE MEASUREMENT ARTIFACTS. Round 26 opened with: "The gate was
@@ -479,14 +495,57 @@ const EXTRA_TRIALS = [
   ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
     /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
     '| Languages not enumerated above | Gemini TTS via OpenRouter |\n$1')],
+  // ── J28-M2 — JURY'S NAMED DEFEAT, the fourth recurrence of J17-C1. Every
+  // rendition has a voice, so a row routing "any other voice" is total and the
+  // refusal beneath it is unreachable. It passed the v28 guard because leg 2a
+  // asks whether a row MENTIONS a dimension and `voice` unconditionally is one.
+  // Fires twice now: leg 2b (nothing narrows) and leg 2c (it is the refusal's
+  // own words over another dimension).
+  //
+  // THIS SLOT HELD `| Fallback |`, AND THAT IS A LOSS, STATED RATHER THAN HIDDEN.
+  // TRIAL_COUNT is asserted by CONTRIBUTING.md:47, which is outside the write
+  // scope of the agent that adds guards, so a specimen can only be added by
+  // displacing one. `Fallback` was the second of two specimens for leg 2a — the
+  // first, `| Languages not enumerated above |`, is still installed below — and
+  // it was re-run by hand against this build: it fires TWICE (leg 2a and leg
+  // 2b). Restoring it needs one edit to CONTRIBUTING.md:47, 74 -> 75.
   ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
     /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
-    '| Fallback | Gemini TTS via OpenRouter |\n$1')],
+    '| Any other voice | Lemonfox |\n$1')],
+  // ── J28-M2 CANONICAL: restore the row that actually shipped. `Cloned voice,
+  // any language` narrows `is_clone` perfectly and routes every language on
+  // earth, so the refusal beneath it is unreachable for the one user class most
+  // likely to submit an unsupported language. The v28 guard passed this, and
+  // said so in its own comment. Leg 2e is the answer and this is its proof.
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /\| Cloned voice — `en`, `es`, `fr` only \|/,
+    '| Cloned voice, any language |')],
+  // ── 2f: put Gemini back on the `es`/`fr` route. This is not hypothetical --
+  // it is the literal text this table carried until 2026-08-09.
+  ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
+    /(\| `es`, `fr`, standard voice \| )\*\*Fish Audio `s2-pro`\*\*/,
+    '$1**Gemini TTS via OpenRouter** (`google/gemini-3.1-flash-tts-preview`), direct Google as the fallback chain')],
   // The defeat that survives the restriction leg: a row that NAMES languages and
   // routes their complement. Leg 3 is the only thing that sees it.
   ['NO-ROUTE-TOTAL', 'spec', (t) => t.replace(
     /(\| \*\*Any other language\*\* \| \*\*NO ROUTE\.)/,
     '| Any language other than `en`, `es`, `fr` | Gemini TTS via OpenRouter |\n$1')],
+  // ── J28-M3, Jury's named defeat: flip a directory that EXISTS to `planned`.
+  ['TREE-MARKER', 'readme', (t) => t.replace(
+    /(├── worker\/[^\n]*── )present/, '$1planned')],
+  // The other direction: claim a directory that does not exist is present.
+  ['TREE-MARKER', 'readme', (t) => t.replace(
+    /(└── help\/[^\n]*── )planned/, '$1present')],
+  // ── J28-M4, Jury's named defeat, verbatim.
+  ['COST', 'roadmap', (t) => t.replace(/\$0\.165-\$0\.224 per 9-hour book/, '$0.01-$0.02 per 9-hour book')],
+  // The vendor side: break the arithmetic that makes the ~25x comparison mean anything.
+  ['COST', 'readme', (t) => t.replace(/\$0\.01\/min is \$5\.40/, '$0.01/min is $2.40')],
+  // ── J28-M5 (a): hand a runtime path back to auditors only.
+  ['WS-OWNED', 'codeowners', (t) => t.replace(
+    /\/apps\/web\/\s+Arch\s+Vega\s+Halo\s+Optic/, '/apps/web/                      Halo  Optic')],
+  // ── J28-M5 (b): drop the scanner's owner so it falls to the `*` catch-all.
+  ['WS-OWNED', 'codeowners', (t) => t.replace(
+    /\/\.github\/scripts\/\s+Vault\s+Forge[^\n]*\n/, '')],
   // A document stating a --self-test result that is not the one the harness
   // declares. Run against README.md rather than CONTRIBUTING.md so the trial
   // stays live while CONTRIBUTING's own count is open.
@@ -964,11 +1023,19 @@ function runChecks(src, opts = {}) {
   //   1. ORDERING. Exactly one row refuses, and it is the LAST data row. Any row
   //      appended below it fires whatever its wording. This is the leg that
   //      answers J22-M6, and it is wording-independent by construction.
-  //   2. RESTRICTION. Every row above the refusal must constrain SOMETHING: it
+  //   2a. GROUNDING. Every row above the refusal must constrain SOMETHING: it
   //      must name a language VALUE (a backticked code) or a dimension declared
   //      on `voices`. Naming the routing key itself — "language", "languages" —
   //      is not a constraint, it is the name of the thing being constrained, so
   //      "Languages not enumerated above" fires exactly like "Everything else".
+  //   2b/2c. NARROWING — J28-M2, the fourth recurrence. 2a asks whether a row
+  //      MENTIONS a dimension. `voice` is unconditionally a dimension stem, so
+  //      `| Any other voice | Lemonfox |` mentions one, passes, and routing is
+  //      total again. Jury: the guard "never asks whether the dimension narrows
+  //      anything." The sentence 2a already writes about `language` — the name
+  //      of the thing being constrained is not a constraint — was never applied
+  //      to `voice`, which is the name of the OTHER thing being constrained.
+  //      See the two legs below the loop for what replaces it.
   //   3. NO DOUBLE CLAIM. A language code may appear in at most one condition.
   //      This is what stops the defeat that survives leg 2: a row reading
   //      "Any language other than `en`, `es`, `fr`" names codes, so it looks
@@ -1004,6 +1071,71 @@ function runChecks(src, opts = {}) {
     for (const col of voiceCols) {
       for (const part of col.split('_')) if (part.length >= 4) dimStems.add(part);
     }
+    // ENTITY STEMS — the names of the things this table constrains, as opposed
+    // to the values it constrains them to. Harvested, not authored: the routing
+    // KEY from §3.5's own "keyed on `segments.lang`" sentence, and every §7
+    // TABLE NAME the routing section names. `voices` yields `voice`; `lang`
+    // yields `lang`, and a token counts as an entity noun when it STARTS with a
+    // stem, so `languages`, `voices` and `langs` need no separate entry.
+    //
+    // The property stems above (`clone` from `is_clone`, `gender`, `provider`)
+    // are deliberately NOT entity nouns. "Cloned" is the value of `is_clone`
+    // written as an adjective; naming it does narrow. "Voice" names the column
+    // family itself and narrows nothing — that difference is J28-M2.
+    //
+    // The harvest is UNCONDITIONAL on the routing text. The first version of
+    // this leg admitted a table name only when §3.5 already used it, so the
+    // stem set moved with the row under test: `| Any other voice |` did not add
+    // the plural `voices`, `voice` was therefore not an entity, `voice` counted
+    // as a narrowing token, and the mutation Jury named went GREEN on the first
+    // run of the repair meant to catch it. A guard whose vocabulary is a
+    // function of the defect cannot see the defect.
+    const entityStems = new Set(['lang']);
+    for (const m of routing.matchAll(/keyed on\s+`(\w+)\.(\w+)`/g)) entityStems.add(m[2].toLowerCase());
+    // Singularised so `voices` covers the `voice` the table actually writes,
+    // and NOT singularised for a name already ending in `ss` — `listening_progress`
+    // is not the plural of `listening_progres`.
+    for (const table of columnsOf.keys()) {
+      const t = table.toLowerCase();
+      entityStems.add(/ss$/.test(t) ? t : t.replace(/s$/, ''));
+    }
+    const isEntity = (tok) => [...entityStems].some((s) => tok.startsWith(s));
+    // A CLOSED CLASS, and the reason this is not the denylist J26-M4 killed.
+    // That one enumerated catch-all PHRASES — an open set, so the next author
+    // writes the sixteenth. This enumerates English quantifiers, anaphors and
+    // function words: the words that can only ever say "how many" or "which of
+    // the ones already named", never "which kind". A row survives this leg by
+    // naming something these words cannot express, which is every value in the
+    // live table (`Cloned`, `Named built-in premium`, `English`, `standard`).
+    // It is stated plainly in the report: this leg is fail-open on a novel
+    // CONTENT word used to mean "everything else" (`| Miscellaneous voices |`),
+    // and leg 2c below is the lexicon-free half that does not depend on it.
+    const NON_NARROWING = new Set([
+      // determiners and quantifiers
+      'a', 'an', 'the', 'any', 'all', 'every', 'each', 'both', 'either', 'neither',
+      'some', 'no', 'none', 'most', 'many', 'much', 'few', 'several', 'more',
+      // anaphora — reference to what the table already said
+      'other', 'others', 'otherwise', 'else', 'elsewhere', 'rest', 'remaining',
+      'remainder', 'leftover', 'left', 'further', 'additional', 'extra', 'above',
+      'below', 'preceding', 'previous', 'prior', 'following', 'listed', 'enumerated',
+      'mentioned', 'covered', 'specified', 'matched', 'handled', 'supported',
+      'claimed', 'unlisted', 'unmatched', 'uncovered', 'unenumerated', 'unspecified',
+      'unhandled', 'unsupported', 'unnamed', 'unknown',
+      // generic placeholders for "a thing of the kind this table routes"
+      'fallback', 'default', 'catchall', 'catch', 'misc', 'miscellaneous',
+      'everything', 'anything', 'something', 'whatever', 'thing', 'things',
+      'case', 'cases', 'item', 'items', 'entry', 'entries', 'row', 'rows',
+      'value', 'values', 'option', 'options', 'kind', 'kinds', 'type', 'types',
+      // negation, prepositions, copula
+      'not', 'non', 'except', 'excepting', 'excluding', 'besides', 'beyond',
+      'outside', 'than', 'that', 'which', 'is', 'are', 'was', 'were', 'be',
+      'of', 'in', 'on', 'to', 'for', 'with', 'and', 'or', 'by', 'at', 'from',
+      'as', 'it', 'its', 's', 't',
+    ]);
+    const tokensOf = (cond) => cond.toLowerCase().split(/[^a-z0-9À-ɏ]+/u).filter(Boolean);
+    // Tokens left once the ENTITY names and the language codes are removed. No
+    // lexicon is applied here — leg 2c compares this against the refusal's own.
+    const bareResidue = (cond) => tokensOf(cond).filter((t) => !isEntity(t) && !langCodes.has(t));
     const refusals = routingRows.filter((r) => /NO ROUTE/i.test(r.raw));
     if (refusals.length !== 1) {
       add('CRITICAL', 'routing-totality', 'spec', 0,
@@ -1032,17 +1164,319 @@ function runChecks(src, opts = {}) {
           `row makes the table total over languages, which leaves ` +
           `blocked_language_unsupported with no reachable raiser (J17-C1, J22-M6, J26-M4).`);
       }
-      for (const c of codes) {
-        if (claimed.has(c)) {
+      // ── 2b/2c — DOES THE DIMENSION NARROW ANYTHING? (J28-M2)
+      // Both legs are skipped for a row naming a declared language code: such a
+      // row is grounded in a VALUE, and the row that names codes it does not
+      // route is leg 3's business, not this one.
+      if (!codes.length) {
+        const bare = bareResidue(cond);
+        // 2b — NARROWING. After the entity names come out, something must be
+        // left that says WHICH voices, WHICH languages. `Cloned voice, any
+        // language` leaves `cloned`. `Any other voice` leaves nothing a
+        // quantifier did not put there, and a row that names only a dimension
+        // and a quantifier over it routes every value of that dimension.
+        const narrowing = bare.filter((t) => !NON_NARROWING.has(t));
+        if (!narrowing.length) {
           add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
-            `[NO-ROUTE-TOTAL] §3.5 names \`${c}\` in two routing conditions ` +
-            `("${claimed.get(c).slice(0, 32)}" and "${cond.slice(0, 32)}"). A second row citing ` +
-            `codes already claimed above it is not routing those languages — it is routing ` +
-            `the complement, which is the catch-all this table may not contain (J26-M4).`);
-        } else {
-          claimed.set(c, cond);
+            `[NO-ROUTE-TOTAL] §3.5 row "${cond.slice(0, 48)}" MENTIONS a dimension without ` +
+            `NARROWING it: strip the entity names {${[...entityStems].sort().join(', ')}} and the ` +
+            `quantifiers, and nothing is left that says WHICH value routes. ` +
+            `${bare.length ? `Residue {${bare.join(', ')}} is quantifier-only.` : 'Residue is empty.'} ` +
+            `"Cloned voice" narrows \`is_clone\`; "Any other voice" narrows nothing and therefore ` +
+            `routes every voice, which makes the refusal below it unreachable. This is J28-M2 — ` +
+            `leg 2a asked only whether a row mentions a dimension, and \`voice\` always is one.`);
+        }
+        // 2c — THE REFUSAL'S OWN SHAPE, and no lexicon involved. The last row is
+        // the table's declared catch-all, so its wording IS the definition of a
+        // catch-all in this document. A routing row built from nothing but that
+        // vocabulary is the refusal restated over a different dimension: "Any
+        // other language" → "Any other voice". Harvested from the document, so
+        // rewriting the refusal as "Everything else" moves this leg with it.
+        if (refusals.length === 1 && bare.length) {
+          const refusalBare = new Set(bareResidue(refusals[0].cells[0] ?? ''));
+          if (refusalBare.size && bare.every((t) => refusalBare.has(t))) {
+            add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+              `[NO-ROUTE-TOTAL] §3.5 row "${cond.slice(0, 48)}" is the REFUSAL RESTATED over ` +
+              `another dimension: strip the entity names and it says {${bare.join(', ')}}, which is ` +
+              `wholly contained in what the no-route row itself says ` +
+              `({${[...refusalBare].join(', ')}}). The last row is this table's own definition of a ` +
+              `catch-all; a routing row that borrows its whole vocabulary routes everything the ` +
+              `refusal was written to refuse.`);
+          }
         }
       }
+      // ── 2e — LANGUAGE TOTALITY, keyed on the dimension the REFUSAL names (J28-M2)
+      // Leg 2b asks whether a row narrows SOMETHING. That is not the question the
+      // refusal poses. `blocked_language_unsupported` refuses on LANGUAGE, so a
+      // row total over language makes it unreachable no matter how sharply it
+      // narrows some other dimension. `Cloned voice, any language` narrows
+      // `is_clone` perfectly and still routes Swahili — leg 2b passed it, and its
+      // own comment said "Cloned voice narrows is_clone" as though that settled
+      // it. It did not: the user with a cloned voice can never receive the
+      // refusal, and that user class is exactly who submits unusual languages.
+      //
+      // Every routing row must therefore be grounded in a language VALUE. Naming
+      // the dimension ("any language", "all languages") is what this leg exists
+      // to reject, so the test is for a declared CODE, not for the word.
+      if (!codes.length) {
+        add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+          `[NO-ROUTE-TOTAL] §3.5 row "${cond.slice(0, 48)}" names no language code from ` +
+          `{${[...langCodes].sort().join(', ')}}, so it routes EVERY language including the ones ` +
+          `the last row refuses. The refusal is keyed on language; a row that does not constrain ` +
+          `language makes it unreachable, however tightly the row constrains a voice. This is ` +
+          `J28-M2: leg 2b accepted "Cloned voice, any language" because \`cloned\` narrows ` +
+          `\`is_clone\` — a true statement that answers the wrong question.`);
+      }
+      // ── 2f — THE PROVIDER THAT OUTLIVED ITS REASON ─────────────────────────
+      // Gemini entered this table for ONE reason: it was the Haitian Creole
+      // route, and it was the right one -- production serves `ht` natively.
+      // `ht` left scope on 2026-08-08. Gemini did not, and for nineteen
+      // revisions this table routed `es` and `fr` -- two of the three shipping
+      // languages -- to a provider the product will not use. SPIKE A's first
+      // `es`/`fr` measurement was taken against that audio, so the routing
+      // defect propagated into a MEASUREMENT before anyone read the row.
+      //
+      // The row also named "direct Google as the fallback chain", which is
+      // constraint 2 ("no fallback launch") violated in the plainest available
+      // words, inside the document that declares the constraint.
+      //
+      // Checked against the provider HEAD -- the text before the first period --
+      // so that a row may still explain in prose what it used to say. A guard
+      // that forbids the word outright forbids recording the correction.
+      const providerHead = (r.cells[1] ?? '').split('.')[0];
+      if (/gemini|openrouter/i.test(providerHead)) {
+        add('CRITICAL', 'routing-provider', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+          `[NO-ROUTE-TOTAL] §3.5 row "${cond.slice(0, 48)}" ROUTES to Gemini/OpenRouter. ` +
+          `Gemini was the \`ht\` path only; \`ht\` left scope on 2026-08-08 and the route left ` +
+          `with it. \`es\`/\`fr\` are Fish Audio \`s2-pro\` (fixtures.json:16, owner, ` +
+          `2026-08-09). A row may DESCRIBE the old route after the first period; it may not BE ` +
+          `it.`);
+      }
+      // ── UNIQUENESS, scoped to the VOICE CLASS (was global) ─────────────────
+      // The original rule was: a code may appear in exactly one routing row, on
+      // the reasoning that a second mention routes the COMPLEMENT (J26-M4). That
+      // is sound while the table is keyed on language ALONE. It stopped being
+      // sound when leg 2e forced every row to name its codes, because the table
+      // is genuinely two-dimensional — voice class x language — and `es` now
+      // appears legitimately under cloned, premium and standard voices.
+      //
+      // The defect J26-M4 names is a second row that shares a code and does NOT
+      // distinguish itself on the other dimension; that row can only be routing
+      // the complement. So the key is (code, voice residue), not code alone.
+      // Narrowing this rule is a real loosening and is recorded as such: it is
+      // justified by leg 2e being strictly stronger on the property J26-M4 was
+      // protecting — no row can be language-total any more, which is what
+      // "routing the complement" would require.
+      const voiceKey = bareResidue(cond).filter((t) => !NON_NARROWING.has(t)).sort().join('+') || '(none)';
+      for (const c of codes) {
+        const key = `${c}|${voiceKey}`;
+        if (claimed.has(key)) {
+          add('CRITICAL', 'routing-totality', 'spec', lineOf(src.spec, src.spec.indexOf(r.raw)),
+            `[NO-ROUTE-TOTAL] §3.5 names \`${c}\` in two routing conditions that do not differ ` +
+            `on any other dimension ("${claimed.get(key).slice(0, 32)}" and "${cond.slice(0, 32)}", ` +
+            `both reducing to {${voiceKey}}). A second row citing codes already claimed above it, ` +
+            `with nothing else to tell them apart, is not routing those languages — it is routing ` +
+            `the complement, which is the catch-all this table may not contain (J26-M4).`);
+        } else {
+          claimed.set(key, cond);
+        }
+      }
+    }
+  }
+
+  // 6b-bis. TREE MARKERS — `── present` is a claim about the FILESYSTEM (J28-M3)
+  // README's directory tree annotates every path `present` or `planned`, and
+  // nothing checked either. Jury flipped `worker/` to `planned` -- in the commit
+  // that CREATED `worker/` -- and the gate stayed green. The same commit left
+  // `docs/help/` marked `planned` four lines below rows it had just marked
+  // `present`, which is the seam-at-the-boundary-of-the-fix shape for the third
+  // time.
+  //
+  // This is the cheapest possible guard to get right, because the claim is
+  // decidable: `present` means the path exists and holds at least one file;
+  // `planned` means it does not. No lexicon, no prose parsing, no judgement.
+  {
+    const NL = String.fromCharCode(10);
+    const treeLines = (src.readme || '').split(NL)
+      .map((raw, i) => ({ raw, i }))
+      .filter(({ raw }) => /──\s*(present|planned)\s*$/.test(raw));
+    if (!treeLines.length) {
+      // [HARVEST] doctrine: a parse that returns nothing is a broken parse.
+      add('CRITICAL', 'tree-marker', 'readme', 0,
+        '[TREE-MARKER] found NO `── present`/`── planned` rows in README. Either the ' +
+        'directory tree lost its markers or this parse broke; both are findings, and a ' +
+        'silent pass over an empty set is how [ART-FIGURE] sat vacuous for twelve documents.');
+    }
+    let lastTop = '';
+    for (const { raw, i } of treeLines) {
+      const marker = raw.match(/──\s*(present|planned)\s*$/)[1];
+      // Strip the box-drawing prefix, then take the first whitespace-delimited
+      // token: that is the path. Indented rows (a leading `│` or spaces before
+      // the connector) are children of the last top-level entry.
+      const nested = /^[│\s]*[│]\s|^\s{4,}/.test(raw.replace(/^[├└]/, ''));
+      const body = raw.replace(/^[│\s]*[├└]──\s*/, '').trim();
+      const token = body.split(/\s+/)[0] || '';
+      if (!token || /^──$/.test(token)) continue;
+      const rel = token.replace(/\/$/, '');
+      const full = nested && lastTop ? `${lastTop}/${rel}` : rel;
+      if (!nested) lastTop = rel;
+      const exists = existsSync(full) &&
+        (statSync(full).isFile() || readdirSync(full).length > 0);
+      if (marker === 'present' && !exists) {
+        add('MAJOR', 'tree-marker', 'readme', i + 1,
+          `[TREE-MARKER] README marks \`${full}\` as \`present\` and it does not exist ` +
+          `(or is an empty directory). The tree is the first thing a contributor reads; a ` +
+          `path marked present that is not there sends them looking for code nobody wrote.`);
+      } else if (marker === 'planned' && exists) {
+        add('MAJOR', 'tree-marker', 'readme', i + 1,
+          `[TREE-MARKER] README marks \`${full}\` as \`planned\` and it EXISTS. This is the ` +
+          `J28-M3 direction and the one that actually happened: the commit that created a ` +
+          `directory left the line describing it unflipped, four lines from lines it did flip.`);
+      }
+    }
+  }
+
+  // 6b-ter. COST — recomputed from the artifact, never trusted as prose (J28-M4)
+  // Jury replaced `$0.165-$0.224` with `$0.01-$0.02` and the gate stayed clean.
+  // Cost is the figure the credit system is priced on and the one that decides
+  // self-hosted-vs-vendor, so it is the last figure that should be checkable
+  // only by remembering it.
+  //
+  // It IS derivable: `spike-a-results.json` carries
+  // `compute_cost_per_audio_hour_usd` per language, and the published range is
+  // its min and max times a 9-hour book. That reconciles to the cent today
+  // (0.0183 x 9 = 0.165, 0.0249 x 9 = 0.224), so the guard recomputes rather
+  // than comparing against a second copy of the number.
+  //
+  // The MODEL MATTERS and this is why the guard names its file: the same
+  // computation over `spike-a-resultssmall.json` gives $0.405-$0.569, and
+  // quoting a number from a configuration other than the one that produced the
+  // accuracy figures is exactly the mixed-model defect J26-C2 found in the
+  // published triple.
+  {
+    const NL = String.fromCharCode(10);
+    const COST_ARTIFACT = 'aligner/spike-a/out/spike-a-results.json';
+    let lo = null, hi = null;
+    if (existsSync(COST_ARTIFACT)) {
+      try {
+        const raw = JSON.parse(readFileSync(COST_ARTIFACT, 'utf8'));
+        const rows = Array.isArray(raw) ? raw : (raw.results || []);
+        const c = rows.map((r) => r && r.compute_cost_per_audio_hour_usd).filter((n) => typeof n === 'number');
+        if (c.length) { lo = Math.min(...c) * 9; hi = Math.max(...c) * 9; }
+      } catch { /* leave null — handled below */ }
+    }
+    for (const [key, txt] of Object.entries(src)) {
+      if (typeof txt !== 'string') continue;
+      for (const m of txt.matchAll(/\$([0-9]+\.[0-9]{2,3})\s*[-–—]\s*\$([0-9]+\.[0-9]{2,3})\s+per\s+9-hour\s+book/g)) {
+        if (lo === null) {
+          add('MAJOR', 'cost-claim', key, lineOf(txt, m.index),
+            `[COST] a per-9-hour-book cost is stated and ${COST_ARTIFACT} could not be read to ` +
+            `check it. An unverifiable cost claim is how "$0.07-$0.15" survived three rounds.`);
+          continue;
+        }
+        const claimLo = Number(m[1]), claimHi = Number(m[2]);
+        if (Math.abs(claimLo - lo) > 0.005 || Math.abs(claimHi - hi) > 0.005) {
+          add('MAJOR', 'cost-claim', key, lineOf(txt, m.index),
+            `[COST] claims $${m[1]}-$${m[2]} per 9-hour book; ${COST_ARTIFACT} computes ` +
+            `$${lo.toFixed(3)}-$${hi.toFixed(3)} (min/max compute_cost_per_audio_hour_usd x 9). ` +
+            `If the intended source is a different configuration, say which -- the \`small\` ` +
+            `model gives $0.405-$0.569 and mixing configurations is J26-C2.`);
+        }
+      }
+      // Hypereal's vendor price is arithmetic on its own published rate.
+      for (const m of txt.matchAll(/\$0\.01\s*\/\s*min[^\n]{0,40}?\$([0-9]+\.[0-9]{2})/g)) {
+        const expect = 0.01 * 60 * 9;
+        if (Math.abs(Number(m[1]) - expect) > 0.005) {
+          add('MAJOR', 'cost-claim', key, lineOf(txt, m.index),
+            `[COST] states Hypereal at $0.01/min and $${m[1]} for a 9-hour book; ` +
+            `$0.01 x 60 x 9 = $${expect.toFixed(2)}.`);
+        }
+      }
+    }
+  }
+
+  // 6b-quater. WS-OWNED — every file has an AUTHOR, not just a reviewer (J28-M5)
+  // Round 28 found 9 files falling only to the `*  Jury` catch-all -- including
+  // `.github/scripts/secret-scan.mjs` and `.env.example`, the two files that
+  // CONSTITUTE the key-material control -- and 8 runtime TypeScript files owned
+  // only by audit-layer agents. Jury's next-gate list called for a `[WS-OWNED]`
+  // guard to be green. NO SUCH GUARD EXISTED. That is the N6-C3 shape again: a
+  // requirement written against a mechanism nobody built.
+  //
+  // Two distinct defects, because they fail differently:
+  //   (a) CATCH-ALL ONLY. The file's only owner is the `*` rule. Nobody is
+  //       named, so review falls to whoever notices.
+  //   (b) AUDITORS ONLY. Every owner is an audit-layer persona. CLAUDE.md's
+  //       Rule 4 is that auditors do not edit code; if they are the only
+  //       owners, either that rule breaks or the file has no author. Halo
+  //       owning `/apps/` was this -- and "accessibility is the product"
+  //       cannot mean the accessibility auditor writes the front end.
+  //
+  // Matching follows GitHub's LAST-MATCHING-RULE semantics. The glob support is
+  // deliberately narrow (leading `/`, trailing `/`, `**/`, bare `*`) and any
+  // pattern outside it is REPORTED rather than silently skipped -- an
+  // unsupported pattern is why a file looks owned when it is not.
+  {
+    const NL = String.fromCharCode(10);
+    const AUDIT_LAYER = new Set(['Jury', 'Halo', 'Proof', 'Optic']);
+    const CODE = /\.(?:ts|tsx|js|jsx|mjs|cjs|py|sql|sh)$/i;
+    const coText = src.codeowners || '';
+    const rules = [];
+    let unsupported = 0;
+    for (const raw of coText.split(NL)) {
+      const line = raw.replace(/#.*$/, '').trim();
+      if (!line) continue;
+      const [pat, ...owners] = line.split(/\s+/);
+      if (!owners.length) continue;
+      let re;
+      if (pat === '*') re = /^/;
+      else if (pat.startsWith('**/')) re = new RegExp(`(?:^|/)${pat.slice(3).replace(/\/$/, '')}/`);
+      else if (pat.startsWith('/') && pat.endsWith('/')) re = new RegExp(`^${pat.slice(1)}`);
+      else if (pat.startsWith('/')) re = new RegExp(`^${pat.slice(1).replace(/[.]/g, '\.')}$`);
+      else { unsupported++; continue; }
+      rules.push({ pat, re, owners });
+    }
+    if (unsupported) {
+      add('MAJOR', 'ws-owned', 'codeowners', 0,
+        `[WS-OWNED] ${unsupported} CODEOWNERS pattern(s) use a glob form this gate does not ` +
+        `implement, so the files they cover are UNCHECKED. An unsupported pattern reads as ` +
+        `ownership and provides none; either simplify the pattern or extend this matcher.`);
+    }
+    let tracked = [];
+    try {
+      tracked = execSync('git ls-files', { encoding: 'utf8' }).split(NL)
+        .map((x) => x.trim()).filter(Boolean);
+    } catch { /* handled below */ }
+    if (!tracked.length) {
+      add('MAJOR', 'ws-owned', 'codeowners', 0,
+        '[WS-OWNED] could not list tracked files, so ownership was not checked at all.');
+    }
+    const catchAllOnly = [], auditorsOnly = [];
+    for (const f of tracked) {
+      if (/^(?:resources|docs)\//.test(f) || /\.(?:wav|mp3|png|jpg|json|md|txt|lock|yaml|yml)$/i.test(f)) {
+        // Prose, evidence and config are covered by other guards; this one is
+        // about code having an author. Narrow scope stated, not assumed.
+        if (!CODE.test(f)) continue;
+      }
+      let owners = null, matchedPat = null;
+      for (const r of rules) if (r.re.test(f)) { owners = r.owners; matchedPat = r.pat; }
+      if (!owners) continue;
+      if (matchedPat === '*') { if (CODE.test(f)) catchAllOnly.push(f); continue; }
+      if (CODE.test(f) && owners.every((o) => AUDIT_LAYER.has(o))) auditorsOnly.push(f);
+    }
+    if (catchAllOnly.length) {
+      add('MAJOR', 'ws-owned', 'codeowners', 0,
+        `[WS-OWNED] ${catchAllOnly.length} code file(s) match ONLY the \`*\` catch-all, so no ` +
+        `named owner reviews them: ${catchAllOnly.slice(0, 6).join(', ')}` +
+        `${catchAllOnly.length > 6 ? `, +${catchAllOnly.length - 6} more` : ''}. Round 28 found ` +
+        `\`.github/scripts/secret-scan.mjs\` in this list -- the file that IS the key control.`);
+    }
+    if (auditorsOnly.length) {
+      add('MAJOR', 'ws-owned', 'codeowners', 0,
+        `[WS-OWNED] ${auditorsOnly.length} code file(s) are owned ONLY by audit-layer agents ` +
+        `{${[...AUDIT_LAYER].join(', ')}}: ${auditorsOnly.slice(0, 6).join(', ')}` +
+        `${auditorsOnly.length > 6 ? `, +${auditorsOnly.length - 6} more` : ''}. CLAUDE.md Rule 4 ` +
+        `says auditors do not edit code, so these files have a reviewer and no author.`);
     }
   }
 
@@ -1295,17 +1729,42 @@ function runChecks(src, opts = {}) {
             `figure scored against it is stale. Re-run the step that writes it (H26-C1).`);
         }
       }
+      // A manifest row may name audio that is NOT in the repository, but only
+      // when the audio is byte-deterministically REBUILDABLE from bytes that
+      // are (J29-M4). `*-gt.wav` / `*-gtlong.wav` are concatenations of the
+      // committed per-word clips with a fixed silence; they were gitignored to
+      // save 35 MB and their manifest rows were left behind, so this leg went
+      // red on every clone while passing here -- it enumerates the DISK, where
+      // they still exist. The `[STAGED]` guard cannot see it either: a
+      // gitignored file is an absence, not a divergence.
+      //
+      // The escape is not a flag you can simply write. `reconstructible_from`
+      // must name a directory that IS present and non-empty, so a row cannot
+      // excuse itself by assertion -- which is the difference between this and
+      // an allowlist.
       for (const rec of byPath.values()) {
-        if (!wavs[rec.path]) {
-          add('MAJOR', 'artifact', 'roadmap', 0,
-            `[ART-STALE] ${MANIFEST} records ${rec.path} and no such file is in ` +
-            `${ARTIFACT_DIR}. The evidence a result cites is not in the repository.`);
-        }
+        if (wavs[rec.path]) continue;
+        const src = typeof rec.reconstructible_from === 'string' ? rec.reconstructible_from : null;
+        const srcPath = src ? `${ARTIFACT_DIR}/${src}` : null;
+        const srcOk = srcPath && existsSync(srcPath) && readdirSync(srcPath).length > 0;
+        if (srcOk && rec.sha256) continue;
+        add('MAJOR', 'artifact', 'roadmap', 0,
+          `[ART-STALE] ${MANIFEST} records ${rec.path} and no such file is in ` +
+          `${ARTIFACT_DIR}. The evidence a result cites is not in the repository.` +
+          (src
+            ? ` The row claims \`reconstructible_from: ${src}\`, but ${srcOk ? 'it carries no sha256 to check the rebuild against' : `${srcPath} is absent or empty`} — a reconstruction nobody can perform or verify is an absence with a label on it.`
+            : ` If it is rebuildable from committed bytes, say so with \`reconstructible_from\` and keep the sha256, so the claim is checkable.`));
       }
       for (const [f, v] of Object.entries(art.files)) {
         if (f === MANIFEST) continue;
         for (const row of scoredRows(v.data)) {
-          const rec = byPath.get(`${row.lang}.wav`);
+          // Resolve by an EXPLICIT audio_path when the row carries one. The
+          // `${lang}.wav` convention assumes ONE clip per language, which stops
+          // being true the moment a result is per-(lang, voice) -- and
+          // `voice_langs` is keyed exactly that way, so the convention would
+          // make correct per-voice rows unrepresentable. Flagged by
+          // spike-a-voices.json's own `_art_stale_gap` note, not by review.
+          const rec = byPath.get(typeof row.audio_path === 'string' ? row.audio_path : `${row.lang}.wav`);
           if (!rec) {
             add('MAJOR', 'artifact', 'roadmap', 0,
               `[ART-STALE] ${ARTIFACT_DIR}/${f} reports a result for \`${row.lang}\` and ` +
@@ -1480,11 +1939,34 @@ function runChecks(src, opts = {}) {
     // A document claiming a --self-test result must claim the real one. The
     // count is stated in three artifacts and was checked by nothing, so the
     // first guard added or removed made all three wrong and the gate silent.
+    // TWO HARNESSES NOW. `secret-scan --self-test` gained its own trial count
+    // (J28-C1), and this check matched the number without asking WHICH harness
+    // the sentence was about -- so documenting the second one made the guard
+    // report the first one's count as wrong. Scoped by the claim's own line.
+    //
+    // The secret-scan count is obtained by RUNNING it, not by copying it here.
+    // A second hardcoded constant is the defect this guard exists to catch,
+    // reproduced inside the guard -- which is the shape of J26-M3, J28-M2 and
+    // three other findings in this series. If the run cannot be parsed the
+    // check FAILS rather than skipping: [HARVEST]'s rule is that a parse
+    // returning nothing is a broken parse, not an empty document.
     for (const m of txt.matchAll(/(\d+)\s+passed,\s*\d+\s+failed/g)) {
-      if (Number(m[1]) !== TRIAL_COUNT) {
+      const NL = String.fromCharCode(10);
+      const lineStart = txt.lastIndexOf(NL, m.index) + 1;
+      const lineEnd = txt.indexOf(NL, m.index);
+      const lineText = txt.slice(lineStart, lineEnd < 0 ? txt.length : lineEnd);
+      const isSecretScan = /secret-scan/.test(lineText);
+      const expected = isSecretScan ? secretScanTrials() : TRIAL_COUNT;
+      const harness = isSecretScan ? 'secret-scan --self-test' : 'doc-check --self-test';
+      if (expected === null) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
-          `[SD-SELFTEST] claims --self-test reports ${m[1]} passed; the harness declares ` +
-          `${TRIAL_COUNT} trials. Guard counts move when guards are added; this is the ` +
+          `[SD-SELFTEST] this line claims a secret-scan --self-test result, and this gate could ` +
+          `not RUN secret-scan to check it. An unverifiable claim about a security control is ` +
+          `the thing the control exists to prevent; it is not waved through.`);
+      } else if (Number(m[1]) !== expected) {
+        add('MAJOR', 'self-description', key, lineOf(txt, m.index),
+          `[SD-SELFTEST] claims ${harness} reports ${m[1]} passed; that harness declares ` +
+          `${expected} trials. Guard counts move when guards are added; this is the ` +
           `check that says so instead of leaving three documents wrong.`);
       }
     }

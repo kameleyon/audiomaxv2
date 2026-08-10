@@ -89,3 +89,14 @@ Thumbs.db
 #
 # 1.6 MB is the cost of being able to falsify our own result. That is a good trade,
 # and the habit it corrects is the dangerous one: tidying is how evidence goes missing.
+
+# SPIKE A: byte-DETERMINISTIC concatenations, excluded; their SOURCE is committed.
+#
+# `*-gt.wav` and `*-gtlong.wav` are `gt/words/<lang>/*.wav` joined with a fixed
+# 300 ms silence by `groundtruth.py`. The word clips ARE committed (3.6 MB, 70 paid
+# calls, SHA-256 in the manifest), so these rebuild bit-for-bit at zero API cost and
+# `--verify` proves it. Jury's ruling that "regenerable is not the same claim as
+# reproducible" turned on TTS being NON-deterministic; concatenation is not, so
+# excluding these loses no falsifiability. 35 MB.
+/aligner/spike-a/out/*-gt.wav
+/aligner/spike-a/out/*-gtlong.wav

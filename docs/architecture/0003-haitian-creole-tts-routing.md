@@ -2,12 +2,19 @@
 
 > **SUPERSEDED IN PART by [ADR-0005](0005-haitian-creole-is-removed-from-scope.md), 2026-08-08.**
 > Haitian Creole is **out of scope** — the owner removed it the same day this ADR proved it worked.
-> **The routing finding below still stands and still governs `es` and `fr`:** Gemini TTS is reached via
-> **OpenRouter primary** (`google/gemini-3.1-flash-tts-preview`) with **direct Google as fallback**
-> (`gemini-2.5-*-preview-tts`), so **both remain named subprocessors**. The `CLAUDE.md` constraint-2
-> conflict recorded here — a silent primary-to-fallback chain in a product that forbids fallback
-> launches — is **unaffected and still open**. Read this ADR for the method and the routing fact;
-> read ADR-0005 for the language scope.
+> **FULLY SUPERSEDED FOR ROUTING, 2026-08-09 (J29-C3).** This banner previously said the routing
+> finding *"still stands and still governs `es` and `fr`"*. **It does not, and it never should have.**
+> Gemini was reached for `ht`; `es` and `fr` are **Fish Audio `s2-pro`** and always were in the
+> reference stack. That sentence is how the `es`/`fr` → Gemini row survived nineteen spec revisions
+> and how SPIKE A's first `es`/`fr` audio was generated on a provider this product does not ship —
+> **a documentation error that propagated into a measurement.**
+>
+> **`audiomax` routes NOTHING to Gemini or Google.** TTS is Fish `s2-pro` and Lemonfox (spec §3.5).
+> The `CLAUDE.md` constraint-2 conflict recorded below described the *reference stack's* behaviour;
+> since this product has no Gemini path, that conflict is **closed by removal, not by fix** — nothing
+> here falls back to anything. Read this ADR as a record of **how the `ht` question was answered from
+> production evidence at zero API cost** — the method is the durable part — and read ADR-0005 for the
+> scope decision. **Do not read any routing instruction out of it.**
 
 
 ## Status

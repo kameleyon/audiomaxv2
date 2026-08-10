@@ -16,6 +16,8 @@
     "test": "pnpm -r --if-present test && pnpm run test:aligner",
     "test:aligner": "python -m unittest discover -s aligner/tests -t aligner -v",
     "secrets": "node .github/scripts/secret-scan.mjs",
+    "secrets:self-test": "node .github/scripts/secret-scan.mjs --self-test",
+    "verify:voice-langs": "node supabase/tests/verify_voice_langs.mjs",
     "doc-check": "node tools/doc-check.mjs",
     "doc-check:self-test": "node tools/doc-check.mjs --self-test",
     "dev:worker": "pnpm --filter @audiomax/worker dev",

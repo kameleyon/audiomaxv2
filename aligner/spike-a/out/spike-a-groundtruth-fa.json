@@ -1,0 +1,184 @@
+{
+  "_what_this_is": "FORCED ALIGNMENT (torchaudio MMS_FA) scored against the SAME constructed ground truth, in its own file because it is a different accounting basis from the ASR timestamps in spike-a-groundtruth.json. Mixing the two inside one file lets a document quote one figure from each and call it a run (J26-M2).",
+  "_this_is_an_upper_bound_on_the_refinement_stage": "FA HERE IS GIVEN THE TRUE TEXT. On the constructed corpus the display text is exactly what was spoken, so aligning the display text is legitimate — but it is NOT the shipped shape. §6.1 is `ASR -> FA -> match`, where FA receives the ASR TRANSCRIPT, and on this same corpus that transcript is 100% / 90.9% / 75.0% correct. So these figures answer 'how well can forced alignment place words when the words are known', which is the ceiling of the refinement stage and NOT an end-to-end result. Anything quoting them as end-to-end word sync is quoting the wrong number, which is the failure this whole spike keeps repeating.",
+  "_limits": [
+    "CONSTRUCTED CORPUS. Every word was synthesized as its own TTS call and the clips were concatenated with a fixed digital silence. Boundaries are exact by construction; the SPEECH is not natural.",
+    "No coarticulation: in prose the end of one word and the start of the next share the same signal, and that shared region is where boundary error actually lives. Here every boundary is surrounded by silence.",
+    "No sentence prosody: each word carries citation-form stress and a phrase-final fall, because each was synthesized alone.",
+    "Uniform inter-word silence: no speaker produces a constant gap, and a constant gap is an easier segmentation problem than a variable one.",
+    "IT IS NOT UNIFORMLY EASIER, AND THE FIRST DRAFT OF THIS LIST SAID IT WAS. The corpus is easier for BOUNDARY placement — every boundary is surrounded by silence — and HARDER for RECOGNITION, because a word synthesized alone reaches the decoder with no language-model context. Measured: the French match rate is 75.0% on the constructed corpus against 95.8% on the natural fixture, same voice, same words. So a low match rate here is partly the corpus and a low TIMING score here is not excused by it. The two halves of the bar have to be read separately, and a single sentence calling the whole thing a lower bound was wrong.",
+    "THEREFORE, ON TIMING: failure here implies failure on prose. Success here does NOT imply success on prose, and no figure from this file may be quoted as word sync measured on natural audio.",
+    "THE INSERTED SILENCE IS LONGER THAN THE BAR. 315-330 ms separates every pair of words; the drift bound is 250 ms. A decoder that assigns a word's start to the moment the previous word ended is therefore charged MORE than the whole bound here and ~30 ms on prose, for identical behaviour. `--analyse` decomposes exactly this and the strict figure must never be quoted without it.",
+    "The `-gtlong` corpus repeats the fixture sentence to reach length. Repetition is not what a chapter does and a decoder may loop or skip on it; the timing question it answers is sound, the recognition figures on it are not comparable to prose.",
+    "The `-para` corpus is natural prose and has NO ground truth. Its accumulation probe is against forced alignment, which cannot accumulate monotonically. The LEVEL of (ASR - FA) is engine disagreement, not error; only the SLOPE is read."
+  ],
+  "_bar": {
+    "matched_within_drift_pct": 95.0,
+    "p95_drift_ms": 300.0,
+    "drift_bound_ms": 250
+  },
+  "corpora": [
+    {
+      "lang": "en-gt",
+      "language": "en",
+      "kind": "constructed",
+      "audio_seconds": 20.75,
+      "audio_sha256": "30bb8566a2b8311783bb3b1d82564e5e641709e5d45aa0f01e5bf355f017445a",
+      "display_words": 24,
+      "n": 24,
+      "matched_within_drift_pct": 95.8,
+      "median_drift_ms": 29.4,
+      "p95_drift_ms": 79.6,
+      "engine": "torchaudio MMS_FA forced alignment",
+      "asr_minus_fa": {
+        "n": 24,
+        "median_ms": -449.1,
+        "accumulation_vs_time": {
+          "n": 24,
+          "slope_ms_per_s": -13.75,
+          "pearson_r": -0.367,
+          "p_value_fisher_z": 0.0777,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    },
+    {
+      "lang": "en-gtlong",
+      "language": "en",
+      "kind": "constructed",
+      "audio_seconds": 143.46,
+      "audio_sha256": "389ef717e8b06215495e3dc0e483f3ecb6647f4600e07ba7428f8a395b83b6be",
+      "display_words": 168,
+      "fa_skipped": "audio is 143.46s, over the 90.0s cap. MMS_FA's cost is quadratic in clip length. This corpus has EXACT ground truth, so forced alignment adds nothing here that the truth does not already give."
+    },
+    {
+      "lang": "es-gt",
+      "language": "es",
+      "kind": "constructed",
+      "audio_seconds": 19.87,
+      "audio_sha256": "63cd66343c1d9378543698c3b9b6abd692f1349e3488899608cafc79c45de5c5",
+      "display_words": 22,
+      "n": 22,
+      "matched_within_drift_pct": 86.4,
+      "median_drift_ms": 41.1,
+      "p95_drift_ms": 298.9,
+      "engine": "torchaudio MMS_FA forced alignment",
+      "asr_minus_fa": {
+        "n": 20,
+        "median_ms": -413.1,
+        "accumulation_vs_time": {
+          "n": 20,
+          "slope_ms_per_s": -3.717,
+          "pearson_r": -0.081,
+          "p_value_fisher_z": 0.7389,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    },
+    {
+      "lang": "es-gtlong",
+      "language": "es",
+      "kind": "constructed",
+      "audio_seconds": 137.3,
+      "audio_sha256": "ae386b2e3d92c9a9bd4929662be28f0a8cb030f59e3fd8f8b9e7270790c9cd09",
+      "display_words": 154,
+      "fa_skipped": "audio is 137.3s, over the 90.0s cap. MMS_FA's cost is quadratic in clip length. This corpus has EXACT ground truth, so forced alignment adds nothing here that the truth does not already give."
+    },
+    {
+      "lang": "fr-gt",
+      "language": "fr",
+      "kind": "constructed",
+      "audio_seconds": 20.62,
+      "audio_sha256": "25c7e172d72299f5c88ac955d5696642416afd9758df92074bc5c1f865e9e5ac",
+      "display_words": 24,
+      "n": 24,
+      "matched_within_drift_pct": 91.7,
+      "median_drift_ms": 61.7,
+      "p95_drift_ms": 233.7,
+      "engine": "torchaudio MMS_FA forced alignment",
+      "asr_minus_fa": {
+        "n": 18,
+        "median_ms": -592.1,
+        "accumulation_vs_time": {
+          "n": 18,
+          "slope_ms_per_s": -34.882,
+          "pearson_r": -0.476,
+          "p_value_fisher_z": 0.0451,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    },
+    {
+      "lang": "fr-gtlong",
+      "language": "fr",
+      "kind": "constructed",
+      "audio_seconds": 142.53,
+      "audio_sha256": "7a058b25cc08de6b21a5c4a2b9124fffad67d48e867b89b941360efeb86a852c",
+      "display_words": 168,
+      "fa_skipped": "audio is 142.53s, over the 90.0s cap. MMS_FA's cost is quadratic in clip length. This corpus has EXACT ground truth, so forced alignment adds nothing here that the truth does not already give."
+    },
+    {
+      "lang": "en-para",
+      "language": "en",
+      "kind": "natural_prose_NO_GROUND_TRUTH",
+      "audio_seconds": 73.18,
+      "audio_sha256": "b8f7ed91d47229317755d34a3cd2c32faf438f88ac816f1638d06487b92ce2bb",
+      "display_words": 224,
+      "asr_minus_fa": {
+        "n": 222,
+        "median_ms": -87.0,
+        "accumulation_vs_time": {
+          "n": 222,
+          "slope_ms_per_s": -0.899,
+          "pearson_r": -0.196,
+          "p_value_fisher_z": 0.0033,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    },
+    {
+      "lang": "es-para",
+      "language": "es",
+      "kind": "natural_prose_NO_GROUND_TRUTH",
+      "audio_seconds": 74.93,
+      "audio_sha256": "5dad147fda2dc0bfa2574255924d9977d64edcb2b458995a5c8f17c6a2b37d92",
+      "display_words": 222,
+      "asr_minus_fa": {
+        "n": 218,
+        "median_ms": -65.2,
+        "accumulation_vs_time": {
+          "n": 218,
+          "slope_ms_per_s": -0.209,
+          "pearson_r": -0.065,
+          "p_value_fisher_z": 0.3367,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    },
+    {
+      "lang": "fr-para",
+      "language": "fr",
+      "kind": "natural_prose_NO_GROUND_TRUTH",
+      "audio_seconds": 76.77,
+      "audio_sha256": "ac49cd59e922d03c3f485d0ef88a21ff8a3ca8d0e9f64a3b2f9ccec3159b51cd",
+      "display_words": 293,
+      "asr_minus_fa": {
+        "n": 267,
+        "median_ms": -66.0,
+        "accumulation_vs_time": {
+          "n": 267,
+          "slope_ms_per_s": -0.331,
+          "pearson_r": -0.104,
+          "p_value_fisher_z": 0.0906,
+          "_stat_note": "Fisher-z normal approximation, not an exact t test. Read as a screen: |r| small and p large means no accumulation was detected, which on this n is not the same as none existing."
+        },
+        "_basis": "Engine disagreement, NOT error. Forced alignment is a Viterbi pass over the whole utterance and has no mechanism by which error accumulates monotonically with position, so a SLOPE here is attributable to the ASR clock. The LEVEL is not an error measurement and must not be quoted as one."
+      }
+    }
+  ]
+}

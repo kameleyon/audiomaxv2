@@ -189,6 +189,19 @@ is *not* used from this project — one mechanism only (finding J-m1).
 | Billing, ledger, refunds | **Ledger** | `operations/ledger.md` |
 | i18n (en / es / fr) | **Tongue**, **Locale** | `platform/` |
 | Test strategy | **Probe** | `quality/probe.md` |
+| Frontend structure | **Arch** | `frontend/arch.md` |
+| UI components | **Vega** | `frontend/vega.md` |
+| Mobile / PWA | **Touch** | `frontend/touch.md` |
+| Accessibility *engineering* (distinct from Halo's *audit*) | **Access** | `frontend/access.md` |
+| Frontend performance | **Prism** | `frontend/prism.md` |
+
+The five frontend rows were added 2026-08-09. They were missing while `apps/web/`
+and `apps/mobile/` existed and were owned in `CODEOWNERS` by **Halo and Optic —
+two audit-layer agents and no author** (J28-M5). This file is the authority for
+the roster, so a persona `CODEOWNERS` assigns must appear here; the omission made
+the front end look reviewed when it was unwritten. **Halo audits accessibility;
+Access builds it.** Collapsing the two is how "accessibility is the product"
+turns into the auditor writing the code and nobody reviewing it.
 
 **Halo reviews every phase — 0, 0.5, 1, 2, 3, 4, 4.5, 5, 6, 7, 8, 9, 10.**
 This list has been wrong in **five consecutive audits**, most recently by
@@ -226,13 +239,27 @@ Consult `studio-zero/CAPABILITIES.md` before proposing any tool or dependency.
    erasure path that cascades to storage. A takedown you cannot honour is a
    legal liability, not a backlog item.
 7. **Users are told where their documents go.** A subprocessor list is
-   maintained and disclosed. Uploads reach an LLM and up to three TTS vendors —
-   **including OpenRouter and Google** on the Gemini path. Gemini TTS is reached via OpenRouter
-   (`google/gemini-3.1-flash-tts-preview`) with direct Google as the fallback
-   chain, so a document reaches **both** parties — J19-M3, and the routing fact
-   is established at the call site, not in a comment (`docs/architecture/0003`)
-   (J14-C2). Generated audio additionally reaches our own transcription sidecar;
-   that one is first-party and is disclosed as such, not as a subprocessor.
+   maintained and disclosed. **TTS is TWO vendors, not three: Fish Audio
+   `s2-pro` and Lemonfox.** Text additionally reaches an LLM via **OpenRouter**.
+   Generated audio reaches our own transcription sidecar; that one is
+   first-party and is disclosed as such, not as a subprocessor.
+
+   **CORRECTED 2026-08-09 (J29-C3).** This clause read *"up to three TTS vendors
+   — including OpenRouter and Google on the Gemini path… with direct Google as
+   the **fallback chain**."* Gemini was only ever the Haitian Creole TTS route;
+   `ht` left scope on 2026-08-08 (`docs/architecture/0005`) and the route left
+   with it, but this clause did not — **so the file that declares constraint 2,
+   "no fallback launch," described a live primary-to-fallback chain four
+   constraints below it.** Spec §3.5 was corrected first and this was not, which
+   is a document-precedence inversion: this file outranks the spec, so the stale
+   text here was authoritative.
+
+   **Open, and it must close before any ingest endpoint ships:** OpenRouter
+   dispatches to a model host, and that host is a subprocessor the user is
+   entitled to be told about. The Gemini-era answer was "Google". With the TTS
+   route gone, **the LLM model has not been chosen and therefore the host cannot
+   be named.** Shipping ingest while the list says "an LLM" is this constraint
+   breached, not deferred. Owner: **Comply** with **Forge** · due before Phase 5.
 
 ---
 

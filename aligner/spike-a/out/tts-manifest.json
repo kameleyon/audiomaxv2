@@ -1,9 +1,40 @@
 [
   {
+    "path": "en-gt.wav",
+    "bytes": 996114,
+    "sha256": "30bb8566a2b8311783bb3b1d82564e5e641709e5d45aa0f01e5bf355f017445a",
+    "seconds": 20.75,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/en/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
+    "path": "en-gtlong.wav",
+    "bytes": 6886134,
+    "sha256": "389ef717e8b06215495e3dc0e483f3ecb6647f4600e07ba7428f8a395b83b6be",
+    "seconds": 143.46,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/en/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
     "path": "en-holdout.wav",
     "bytes": 524446,
     "sha256": "0d0321989e8bc38116854c3f925d678104323b04e003dafd2b58655c0dc68aa6",
     "seconds": 10.93,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "en-para.wav",
+    "bytes": 3512446,
+    "sha256": "b8f7ed91d47229317755d34a3cd2c32faf438f88ac816f1638d06487b92ce2bb",
+    "seconds": 73.18,
     "sample_rate": 24000,
     "channels": 1,
     "wav_header_length_bogus": false
@@ -18,10 +49,41 @@
     "wav_header_length_bogus": false
   },
   {
+    "path": "es-gt.wav",
+    "bytes": 1752720,
+    "sha256": "63cd66343c1d9378543698c3b9b6abd692f1349e3488899608cafc79c45de5c5",
+    "seconds": 19.87,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/es/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
+    "path": "es-gtlong.wav",
+    "bytes": 12110016,
+    "sha256": "ae386b2e3d92c9a9bd4929662be28f0a8cb030f59e3fd8f8b9e7270790c9cd09",
+    "seconds": 137.3,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/es/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
     "path": "es-holdout.wav",
     "bytes": 933932,
     "sha256": "930e5cb755a5916c0ce104f7c6ef17e4271a01a474be5529a8196f8871e625db",
     "seconds": 10.59,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "es-para.wav",
+    "bytes": 6608702,
+    "sha256": "5dad147fda2dc0bfa2574255924d9977d64edcb2b458995a5c8f17c6a2b37d92",
+    "seconds": 74.93,
     "sample_rate": 44100,
     "channels": 1,
     "wav_header_length_bogus": false
@@ -36,10 +98,113 @@
     "wav_header_length_bogus": false
   },
   {
+    "path": "fr-gt.wav",
+    "bytes": 1818618,
+    "sha256": "25c7e172d72299f5c88ac955d5696642416afd9758df92074bc5c1f865e9e5ac",
+    "seconds": 20.62,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/fr/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
+    "path": "fr-gtlong.wav",
+    "bytes": 12571302,
+    "sha256": "7a058b25cc08de6b21a5c4a2b9124fffad67d48e867b89b941360efeb86a852c",
+    "seconds": 142.53,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false,
+    "reconstructible_from": "gt/words/fr/",
+    "_why": "Gitignored: this file is a byte-deterministic concatenation of the committed per-word clips with a fixed 300 ms silence. The sha256 above is retained so the reconstruction is CHECKABLE, not merely asserted. Rebuild: groundtruth.py --verify."
+  },
+  {
     "path": "fr-holdout.wav",
     "bytes": 843820,
     "sha256": "73ab87cbb2d267daf62ce7a56873a96ae18fb016ea0fcfda783482dc5980cd17",
     "seconds": 9.57,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-feminine-r1.wav",
+    "bytes": 34948148,
+    "sha256": "1b5226c658a685f9522359d5ec7f0f78353eb193168c3fbb2ca1b0d6d2a8fc20",
+    "seconds": 396.24,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-feminine-r2.wav",
+    "bytes": 34183146,
+    "sha256": "c536a44caa591dc0e95b068436df060651692f77073905339de2c18bc834d8b7",
+    "seconds": 387.56,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-locked-r1.wav",
+    "bytes": 31504778,
+    "sha256": "a6f8f37d938a80dd765718082014d1825067a684ce8b2260007e4b75e8c70d10",
+    "seconds": 357.2,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-locked-r2.wav",
+    "bytes": 31386140,
+    "sha256": "922cbefc77d1025706ae364e3392bbd896468bea37c9d917bf3013316d3f3f45",
+    "seconds": 355.85,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-narrateur-r1.wav",
+    "bytes": 36990088,
+    "sha256": "8c7043c20eecb242bc984dce0b032b9cfea9181371271b48dc7599e54f7e294b",
+    "seconds": 419.39,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-long-narrateur-r2.wav",
+    "bytes": 35354552,
+    "sha256": "faaaddbb5372e1d688267dd6fa9195e13dcea8a4b5d09dfcbcc27959b88968a9",
+    "seconds": 400.84,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-para.wav",
+    "bytes": 6771170,
+    "sha256": "ac49cd59e922d03c3f485d0ef88a21ff8a3ca8d0e9f64a3b2f9ccec3159b51cd",
+    "seconds": 76.77,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-short-feminine.wav",
+    "bytes": 880684,
+    "sha256": "05f39955aa64e6358ff615acd5598d7dfd530fa61833c7f4acf28fbda9f0feec",
+    "seconds": 9.98,
+    "sample_rate": 44100,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
+    "path": "fr-short-narrateur.wav",
+    "bytes": 794668,
+    "sha256": "b523212c375c61823a5261b91cb553e8b21f51e4d9bda904f8ce305337adc64f",
+    "seconds": 9.01,
     "sample_rate": 44100,
     "channels": 1,
     "wav_header_length_bogus": false

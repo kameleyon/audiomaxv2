@@ -26,7 +26,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Scan tracked files for key material
+      - name: Prove the scanner catches what it claims to
+        # J28-C1/M1. The scanner shipped for one round reading the DISK while
+        # enumerating the INDEX, and with no vendor rule for two of the four
+        # real keys -- so it reported `clean` on a staged live key. A scanner
+        # with no mutation test is an attestation, not a control, and this job
+        # runs it BEFORE the scan so a broken scanner fails loudly instead of
+        # passing quietly.
+        run: node .github/scripts/secret-scan.mjs --self-test
+
+      - name: Scan STAGED BLOBS for key material
         run: node .github/scripts/secret-scan.mjs
 
   node:
@@ -97,6 +106,14 @@ jobs:
             exit 0
           fi
           exit "$code"
+      - name: Verify the voice_langs guarantees (J28-M6)
+        # 12 static proofs that each guarantee is DECLARED in the migration.
+        # This shipped with 16 proofs invoked by no CI job and no script -- a
+        # test suite nobody runs is documentation with a misleading file
+        # extension. The 20 LIVE probes need a Postgres and are not run here;
+        # that gap is named in the roadmap, not papered over.
+        run: node supabase/tests/verify_voice_langs.mjs
+
       - name: doc-check --self-test
         run: |
           set +e

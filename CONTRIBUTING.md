@@ -44,7 +44,10 @@ record.
 
 ```bash
 node tools/doc-check.mjs             # must exit 0
-node tools/doc-check.mjs --self-test # must report 74 passed, 0 failed
+node tools/doc-check.mjs --self-test # must report 82 passed, 0 failed
+node .github/scripts/secret-scan.mjs --self-test  # must report 26 passed, 0 failed
+node .github/scripts/secret-scan.mjs              # reads STAGED BLOBS, not the disk
+node supabase/tests/verify_voice_langs.mjs        # 12 static proofs of the schema guarantees
 ```
 
 Run **both** before every commit. The first checks the documents; the second

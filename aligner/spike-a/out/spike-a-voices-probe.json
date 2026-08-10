@@ -1,0 +1,17 @@
+{
+  "path": "fr-long-locked-r1.wav",
+  "bytes": 31504778,
+  "seconds": 357.2,
+  "sample_rate": 44100,
+  "utf8_bytes_sent": 7710,
+  "chars_sent": 7710,
+  "voice": "locked",
+  "reference_id": "a5d7dcbb81b4472ea0e240af3edaae7d",
+  "provider": "fish",
+  "model": "s2-pro",
+  "elapsed_seconds": 55.8,
+  "text_sha256": "9e8b2e30cd179955526ad03f2be6f1bcd96f904f67b443f66017d5e25f2a1d4c",
+  "display_words_in_text": 1186,
+  "clears_clip_floor_300s": true,
+  "truncated": false
+}

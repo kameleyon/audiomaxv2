@@ -31,6 +31,7 @@ import json
 import pathlib
 import re
 import statistics
+import subprocess
 import sys
 import time
 import unicodedata
@@ -42,9 +43,104 @@ BAR_MATCHED_PCT = 95.0
 BAR_P95_MS = 300.0
 BAR_HALLUCINATION_PCT = 2.0   # roadmap:159 -- H20-M6. Was set in prose and computed nowhere.
 
+# THE SPLIT (roadmap "Not closed", third item). `hallucination_rate` conflated
+# two failures with OPPOSITE symptoms for a reader, and the conflation reaches
+# the pre-payment disclosure -- so a blind user was told the wrong thing about
+# the wrong risk before paying. See `split_unmatched` for the classification.
+#
+#   engine_hallucination_rate  the audio contains a word the page does not, so
+#                              it has NO display address and the highlight
+#                              FREEZES while it is spoken. Inherits the
+#                              roadmap's `hallucination_rate <= 2` bar whole,
+#                              because that bar was written about this failure:
+#                              "a fluently hallucinated token can be timed to
+#                              50 ms and mapped to the wrong word."
+#   matcher_miss_rate          the word is on the page AND in the audio and we
+#                              failed to join them, so the page word is SKIPPED.
+#                              The bar is ZERO. This is our defect, not a
+#                              provider property: it is fixed by adding a
+#                              normalisation rule, which is now a code change
+#                              with a test in `worker/src/normalize/`. Any
+#                              budget above zero is a budget for our own bugs.
+BAR_ENGINE_HALLUCINATION_PCT = 2.0
+BAR_MATCHER_MISS_PCT = 0.0
+
+# ── The normaliser lives in the PRODUCT, and this file delegates to it ────
+#
+# It used to live here, as four module-level fixture tables. It is what took the
+# match rate from 91.7% to 100%, so it is not a measurement detail -- it is the
+# thing that makes word sync work. A normaliser that exists only in the
+# instrument means the shipped matcher is a DIFFERENT matcher from the measured
+# one, and every figure on disk describes software nobody runs. Jury and Halo
+# both said so repeatedly; this is that finding closed.
+#
+# There is NO Python copy left and no fallback to one. If node or the module is
+# unreachable this raises. A normaliser that silently degrades to identity
+# returns a plausible, wrong match rate -- CLAUDE.md constraint 2 applies to
+# instruments as much as to providers.
+NORMALIZER_CLI = ROOT.parents[1] / "worker" / "src" / "normalize" / "cli.ts"
+
+_NORM_CACHE = {}
+
+
+class NormalizerError(RuntimeError):
+    """The product normaliser could not be reached or refused the request."""
+
+
+def normalizer(lang: str, display_tokens, observed_tokens) -> dict:
+    """
+    One subprocess per (lang, token set), memoised -- not one per token.
+
+    Returns the response of `worker/src/normalize/cli.ts`: folded forms, digits
+    and spoken-form sequences for every display and observed token, plus the
+    grouped-digit map that answers the many-to-one case.
+    """
+    key = (lang, tuple(display_tokens), tuple(observed_tokens))
+    if key in _NORM_CACHE:
+        return _NORM_CACHE[key]
+    if not NORMALIZER_CLI.exists():
+        raise NormalizerError(f"the product normaliser is missing: {NORMALIZER_CLI}")
+    payload = json.dumps({"lang": lang, "display": list(display_tokens),
+                          "observed": list(observed_tokens)})
+    try:
+        proc = subprocess.run([node_binary(), str(NORMALIZER_CLI)],
+                              input=payload.encode("utf-8"), capture_output=True)
+    except OSError as exc:                                    # node not on PATH
+        raise NormalizerError(f"cannot run node for {NORMALIZER_CLI}: {exc}") from exc
+    if proc.returncode != 0:
+        raise NormalizerError(
+            f"{NORMALIZER_CLI} exited {proc.returncode}: "
+            f"{proc.stderr.decode('utf-8', 'replace').strip()}")
+    table = json.loads(proc.stdout.decode("utf-8"))
+    # CROSS-IMPLEMENTATION CHECK. `norm` below still exists because harness.py
+    # and groundtruth.py fold arbitrary tokens through it. Two implementations
+    # of one fold is the drift this move was made to end, so every token that
+    # passes through here is checked against the product fold and a disagreement
+    # RAISES. The check is what makes keeping the Python copy safe.
+    for side in ("display", "observed"):
+        for row in table[side]:
+            if norm(row["token"]) != row["fold"]:
+                raise NormalizerError(
+                    f"fold disagreement on {row['token']!r}: this file folds to "
+                    f"{norm(row['token'])!r}, {NORMALIZER_CLI.name} folds to {row['fold']!r}. "
+                    f"Two implementations of one rule have drifted; fix the product one.")
+    _NORM_CACHE[key] = table
+    return table
+
+
+def node_binary() -> str:
+    return "node"
+
 
 def norm(tok: str) -> str:
-    """Fold to a comparable form: NFC, lowercase, strip punctuation."""
+    """
+    Fold to a comparable form: NFC, lowercase, strip punctuation.
+
+    Kept in Python because harness.py and groundtruth.py fold arbitrary tokens
+    with it, and checked against `worker/src/normalize/foldToken` on every token
+    this file processes (see `normalizer`). It is a mirror with an alarm on it,
+    not a second source of truth.
+    """
     t = unicodedata.normalize("NFC", tok).lower()
     return re.sub(r"[^\w']", "", t, flags=re.UNICODE)
 
@@ -104,59 +200,12 @@ def transcribe(path: pathlib.Path, lang: str, model_size: str = "base", ctype: s
                          "cpu_threads": CPU_THREADS}
 
 
-NUMWORDS = {
-    "en": {"zero":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,
-           "ten":10,"eleven":11,"twelve":12,"thirteen":13,"fourteen":14,"fifteen":15,"sixteen":16,
-           "seventeen":17,"eighteen":18,"nineteen":19,"twenty":20,"thirty":30,"forty":40,"fifty":50,
-           "sixty":60,"seventy":70,"eighty":80,"ninety":90,"hundred":100,"thousand":1000},
-    "es": {"cero":0,"uno":1,"dos":2,"tres":3,"cuatro":4,"cinco":5,"seis":6,"siete":7,"ocho":8,"nueve":9,
-           "diez":10,"veinte":20,"treinta":30,"cuarenta":40,"cincuenta":50,"sesenta":60,"setenta":70,
-           "ochenta":80,"noventa":90,"cien":100,"ciento":100,"mil":1000},
-    "fr": {"zero":0,"un":1,"deux":2,"trois":3,"quatre":4,"cinq":5,"six":6,"sept":7,"huit":8,"neuf":9,
-           "dix":10,"vingt":20,"trente":30,"quarante":40,"cinquante":50,"soixante":60,"cent":100,"mille":1000},
-}
-ABBREV = {
-    "en": {"dr":["doctor"],"mr":["mister"],"mrs":["missus"],"st":["saint","street"],"vs":["versus"]},
-    "es": {"dr":["doctor"],"dra":["doctora"],"sr":["senor"],"sra":["senora"]},
-    "fr": {"dr":["docteur"],"m":["monsieur"],"mme":["madame"],"st":["saint"]},
-}
-
-
-def spoken_forms(display_tok: str, lang: str):
-    """
-    The set of token sequences a TTS engine might SAY for one display token.
-
-    This is the normalization gap SPIKE A measured at ~8%: the page shows `3`,
-    the audio says "three"; the page shows `Dra.`, the audio says "doctora".
-    Neither is a transcription error and neither is a hallucination -- they are
-    the same word in two forms, and a matcher that cannot bridge them reports a
-    correct engine as unreliable.
-    """
-    t = norm(display_tok)
-    if not t:
-        return []
-    out = [[t]]
-    digits = re.sub(r"[^0-9]", "", display_tok)
-    if digits:
-        # A number may be heard as its digits, or spelled out, or split.
-        out.append([digits])
-        words = {v: k for k, v in NUMWORDS.get(lang, {}).items()}
-        n = int(digits)
-        if n in words:
-            out.append([words[n]])
-        # Year form: 1984 -> "nineteen" "eighty" "four"
-        if 1100 <= n <= 2099:
-            hi, lo = divmod(n, 100)
-            seq = [words.get(hi)] + ([words.get(lo)] if lo in words else
-                                     [words.get(lo - lo % 10), words.get(lo % 10)] if lo else [])
-            if all(seq):
-                out.append(seq)
-        # Grouped digits: 1,250 -> "1" ",250" or "1250"
-        out.append([c for c in re.findall(r"[0-9]+", display_tok)])
-    ab = ABBREV.get(lang, {}).get(t)
-    if ab:
-        out.extend([[a] for a in ab])
-    return [[norm(x) for x in seq if norm(x)] for seq in out if seq]
+# The four fixture tables that used to stand here -- NUM, TENS, ABBREV and
+# `spoken_forms` -- are gone. They are `worker/src/normalize/numerals.ts`,
+# `abbreviations.ts` and `index.ts` now, with tests, and this file reaches them
+# through `normalizer()` above. Nothing imports `spoken_forms` from here; the
+# only consumers of this module are harness.py and groundtruth.py, which use
+# `display_words`, `match` and `norm`.
 
 
 def match(observed, display, lang="en"):
@@ -174,16 +223,26 @@ def match(observed, display, lang="en"):
     display token, which is why normalisation must run FIRST: otherwise the
     metric reports a correct engine as an inventing one.
     """
+    table = normalizer(lang, [d[0] for d in display], [o["w"] for o in observed])
+    forms = [row["forms"] for row in table["display"]]
+    # Zipped, never looked up by value: two observed tokens can be identical
+    # dicts and `list.index` would return the first of them.
+    obs_rows = [(o, row) for o, row in zip(observed, table["observed"]) if row["fold"]]
+    obs = [o for o, _ in obs_rows]
+    obs_fold = [row["fold"] for _, row in obs_rows]
+    obs_digits = [row["digits"] for _, row in obs_rows]
+    disp_fold = [row["fold"] for row in table["display"]]
+    grouped = table["grouped"]
+
     matched, unmatched, di, oi = [], [], 0, 0
-    obs = [o for o in observed if norm(o["w"])]
     while oi < len(obs) and di < len(display):
         placed = False
         # Try each display token in a bounded window, longest spoken form first.
         for j in range(di, min(di + 6, len(display))):
-            for seq in sorted(spoken_forms(display[j][0], lang), key=len, reverse=True):
+            for seq in sorted(forms[j], key=len, reverse=True):
                 if not seq:
                     continue
-                got = [norm(obs[oi + k]["w"]) for k in range(len(seq)) if oi + k < len(obs)]
+                got = [obs_fold[oi + k] for k in range(len(seq)) if oi + k < len(obs)]
                 if got == seq:
                     matched.append({
                         "obs_w": " ".join(o["w"] for o in obs[oi:oi + len(seq)]),
@@ -197,7 +256,7 @@ def match(observed, display, lang="en"):
                         # this bit, because "matched" alone does not distinguish
                         # a numeral bridged by spoken_forms from one the ASR
                         # happened to write back as digits.
-                        "via_normalizer": seq != [norm(display[j][0])],
+                        "via_normalizer": seq != [disp_fold[j]],
                     })
                     oi += len(seq)
                     di = j + 1
@@ -210,14 +269,20 @@ def match(observed, display, lang="en"):
         # token, "1250". Without this the display side can never be fully placed
         # and fr sits permanently below the bar for a formatting convention, not
         # for a recognition failure. The inverse of the numeral-expansion case.
+        #
+        # The GROUP is decided by `worker/src/normalize/groupedDigitForm`, not
+        # here: the rule that a run of display tokens is heard as one is part of
+        # the normaliser, and the form this file used to compute joined the
+        # digits of whatever tokens it was handed -- so `pages 47` joined to "47"
+        # and could record the word "pages" as matched against an observation of
+        # "47". The product rule requires every token in the run to carry a digit.
         if not placed and oi < len(obs):
-            heard = norm(obs[oi]["w"])
-            digits_heard = re.sub(r"[^0-9]", "", obs[oi]["w"])
+            digits_heard = obs_digits[oi]
             for span in (3, 2):
                 if di + span > len(display):
                     continue
                 group = display[di:di + span]
-                joined = "".join(re.sub(r"[^0-9]", "", g[0]) for g in group)
+                joined = grouped.get(str(di), {}).get(str(span))
                 if digits_heard and joined == digits_heard:
                     for k, g in enumerate(group):
                         matched.append({
@@ -234,6 +299,55 @@ def match(observed, display, lang="en"):
             oi += 1
     unmatched.extend(obs[oi:])
     return matched, unmatched
+
+
+def split_unmatched(unmatched, display, lang):
+    """
+    Split the unmatched observations into the TWO failures `hallucination_rate`
+    conflated. They have opposite symptoms for a reader.
+
+      ENGINE INVENTION -> the highlight FREEZES. The audio contains a word the
+        page does not, so the token has no display address by definition (spec
+        6.1) and there is nowhere for the caret to be while it is spoken.
+      MATCHER MISS -> the highlight SKIPS. The word IS on the page and IS in the
+        audio; we failed to join them. Some display word is therefore passed
+        over, and the reader loses a word they can see.
+
+    A blind user is told one number before paying. Told "the engine sometimes
+    invents words" they hear an unfixable property of the provider; told "our
+    matcher drops one word in twenty" they hear a defect with an owner. `fr`'s
+    8.7% was reported entirely as the first and is half the second.
+
+    CLASSIFICATION, and the direction of its residual error. An unmatched
+    observation counts as a MATCHER MISS when it corresponds to some display
+    token of the segment -- same fold, same digits, or one of that token's spoken
+    forms. Correspondence is checked over the whole segment rather than at the
+    cursor, because the `fr` case is exactly a token whose display word was
+    placed by something else: a positional test would call `participants.` an
+    invention, which is the conflation this function exists to end.
+
+    The residual runs one way: a word the engine really did invent that happens
+    to appear elsewhere on the page is counted as a matcher miss, so
+    `engine_hallucination_rate` is a FLOOR. Closing it needs the hand-annotated
+    ground truth the roadmap still lists as open -- it cannot be closed by
+    choosing a different rule here, and pretending otherwise is how a metric
+    stops meaning anything.
+    """
+    table = normalizer(lang, [d[0] for d in display], [o["w"] for o in unmatched])
+    known = set()
+    for row in table["display"]:
+        if row["fold"]:
+            known.add(row["fold"])
+        if row["digits"]:
+            known.add(row["digits"])
+        for seq in row["forms"]:
+            if len(seq) == 1:
+                known.add(seq[0])
+    engine, misses = [], []
+    for o, row in zip(unmatched, table["observed"]):
+        corresponds = row["fold"] in known or (row["digits"] and row["digits"] in known)
+        (misses if corresponds else engine).append(o)
+    return engine, misses
 
 
 def main() -> None:
@@ -330,6 +444,13 @@ def main() -> None:
         med_i = round(statistics.median(drift_interior), 1) if drift_interior else None
         p95_i = round(sorted(drift_interior)[int(0.95 * (len(drift_interior) - 1))], 1) if drift_interior else None
         hall = 100.0 * len(halluc) / len(obs) if obs else 0.0
+        # THE SPLIT. The two rates partition `hallucination_rate` exactly, so the
+        # roadmap's required metric keeps its definition and its value and the
+        # two components are additionally emitted. Nothing downstream loses a
+        # number; a reader gains the one that says which failure they will hear.
+        invented, missed_by_matcher = split_unmatched(halluc, disp, lang)
+        engine_hall = 100.0 * len(invented) / len(obs) if obs else 0.0
+        matcher_miss = 100.0 * len(missed_by_matcher) / len(obs) if obs else 0.0
         # Which display tokens were never placed -- the ones a reader loses.
         placed = {m["disp_idx"] for m in matched}
         missed = [disp[i][0] for i in range(len(disp)) if i not in placed]
@@ -349,7 +470,28 @@ def main() -> None:
             # indistinguishable, to anything mechanical, from not returning it at
             # all -- and the roadmap is the authority on the name.
             "hallucination_rate": round(hall, 1),
+            # ── THE SPLIT (roadmap "Not closed", third item). Two failures with
+            # opposite symptoms for a reader, no longer one number.
+            "engine_hallucination_rate": round(engine_hall, 1),
+            "matcher_miss_rate": round(matcher_miss, 1),
+            "passes_engine_hallucination_bar": bool(engine_hall <= BAR_ENGINE_HALLUCINATION_PCT),
+            "passes_matcher_miss_bar": bool(matcher_miss <= BAR_MATCHER_MISS_PCT),
+            "engine_invented_tokens": [h["w"] for h in invented][:20],
+            "matcher_missed_tokens": [h["w"] for h in missed_by_matcher][:20],
+            "_hallucination_split_note": (
+                "engine_hallucination_rate + matcher_miss_rate == hallucination_rate. "
+                "ENGINE INVENTION freezes the highlight: the audio holds a word the page "
+                "does not, so it has no display address and the caret has nowhere to be. "
+                "MATCHER MISS skips a word: it is on the page AND in the audio and we failed "
+                "to join them. The first is a provider property disclosed before payment; the "
+                "second is our defect, fixed by a rule in worker/src/normalize/. Bars: "
+                f"engine <= {BAR_ENGINE_HALLUCINATION_PCT}% (the roadmap's hallucination bar, "
+                f"which was written about this failure), matcher <= {BAR_MATCHER_MISS_PCT}% "
+                "(any budget above zero is a budget for our own bugs). "
+                "engine_hallucination_rate is a FLOOR: an invented word that also appears "
+                "elsewhere on the page is counted as a matcher miss."),
             "unmatched_display": missed,
+            "unmatched_display_pct": round(100.0 * len(missed) / len(disp), 1) if disp else 0.0,
             "hallucinated_tokens": [h["w"] for h in halluc][:20],
             "transcribe_seconds": round(secs, 1),
             "drift_bound_ms": DRIFT_MS,
@@ -410,8 +552,16 @@ def main() -> None:
                   f"{info['seconds']:.1f}s file (H26-m1) -- duration taken from file size")
         if missed:
             print(f"     unmatched display words: {missed[:12]}")
-        if r["hallucinated_tokens"]:
-            print(f"     tokens matching nothing: {r['hallucinated_tokens'][:12]}")
+        eflag = "PASS" if r["passes_engine_hallucination_bar"] else "OVER BAR"
+        mflag = "PASS" if r["passes_matcher_miss_bar"] else "OVER BAR"
+        print(f"     hallucination split: engine-invented {r['engine_hallucination_rate']}% "
+              f"[{eflag}, bar {BAR_ENGINE_HALLUCINATION_PCT}%] -> highlight FREEZES  |  "
+              f"matcher-missed {r['matcher_miss_rate']}% [{mflag}, bar "
+              f"{BAR_MATCHER_MISS_PCT}%] -> highlight SKIPS a page word")
+        if r["engine_invented_tokens"]:
+            print(f"     engine invented (no page address): {r['engine_invented_tokens'][:12]}")
+        if r["matcher_missed_tokens"]:
+            print(f"     matcher missed (word IS on the page): {r['matcher_missed_tokens'][:12]}")
 
     H.write_json(OUT / (f"spike-a-results{a.tag}.json" if a.tag else "spike-a-results.json"), results)
     print(f"\nwrote out/spike-a-results.json  (bar: matched >= {BAR_MATCHED_PCT}%, p95 <= {BAR_P95_MS}ms)")

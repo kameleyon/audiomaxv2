@@ -1,0 +1,454 @@
+{
+  "_what_this_is": "Paid TTS calls made building the constructed ground truth. The cumulative writer landed AFTER the build, so the first invocations overwrote each other and their rows are RECONSTRUCTED FROM THE CACHE rather than logged. That is stated here rather than presented as a log, because a spend record that quietly re-derives itself is the same class of artifact this spike has already been burned by five times.",
+  "totals": {
+    "word_calls_cached_on_disk": 70,
+    "word_calls_discarded_and_reissued": 1,
+    "_discard_reason": "fr token `3`: Fish s2-pro returned 12.42 s of speech for a one-character prompt. Re-issued once; the replacement is 1.44 s. --verify leg (iv) now fails on this class rather than relying on someone reading a byte count.",
+    "paragraph_calls_issued": 6,
+    "_paragraph_reason": "3 discarded: the first paragraph fixtures came out at 49.3 / 54.0 / 38.4 s, below the 60 s floor H26-M7 requires for accumulation to be visible. The texts were lengthened per-language by SPEECH RATE, not by word count, and re-issued.",
+    "total_paid_calls": 77,
+    "budget_granted": 93
+  },
+  "logged_rows": [
+    {
+      "lang": "en",
+      "kind": "paragraph",
+      "bytes": 3512446,
+      "seconds_elapsed": 2.1
+    },
+    {
+      "lang": "es",
+      "kind": "paragraph",
+      "bytes": 6608702,
+      "seconds_elapsed": 11.5
+    },
+    {
+      "lang": "fr",
+      "kind": "paragraph",
+      "bytes": 6771170,
+      "seconds_elapsed": 11.6
+    }
+  ],
+  "reconstructed_word_calls": [
+    {
+      "lang": "en",
+      "file": "000-dr.wav",
+      "bytes": 38446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "001-chen.wav",
+      "bytes": 26446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "002-published.wav",
+      "bytes": 31246,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "003-the.wav",
+      "bytes": 4846,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "004-results.wav",
+      "bytes": 33646,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "005-in.wav",
+      "bytes": 24046,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "006-1984.wav",
+      "bytes": 74446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "007-section.wav",
+      "bytes": 37246,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "008-3.wav",
+      "bytes": 30046,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "009-of.wav",
+      "bytes": 14446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "010-the.wav",
+      "bytes": 4846,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "011-report.wav",
+      "bytes": 36046,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "012-covers.wav",
+      "bytes": 33646,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "013-pages.wav",
+      "bytes": 33646,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "014-47.wav",
+      "bytes": 58846,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "015-to.wav",
+      "bytes": 13246,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "016-52.wav",
+      "bytes": 54046,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "017-and.wav",
+      "bytes": 22846,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "018-the.wav",
+      "bytes": 4846,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "019-sample.wav",
+      "bytes": 38446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "020-size.wav",
+      "bytes": 25246,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "021-was.wav",
+      "bytes": 20446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "022-1-250.wav",
+      "bytes": 98446,
+      "source": "cache"
+    },
+    {
+      "lang": "en",
+      "file": "023-participants.wav",
+      "bytes": 52846,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "000-la.wav",
+      "bytes": 32812,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "001-dra.wav",
+      "bytes": 32812,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "002-herrera.wav",
+      "bytes": 53292,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "003-publico.wav",
+      "bytes": 57388,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "004-los.wav",
+      "bytes": 45100,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "005-resultados.wav",
+      "bytes": 86060,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "006-en.wav",
+      "bytes": 8236,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "007-1984.wav",
+      "bytes": 172076,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "008-la.wav",
+      "bytes": 36908,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "009-seccion.wav",
+      "bytes": 65580,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "010-3.wav",
+      "bytes": 49196,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "011-del.wav",
+      "bytes": 45100,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "012-informe.wav",
+      "bytes": 65580,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "013-abarca.wav",
+      "bytes": 61484,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "014-las.wav",
+      "bytes": 16428,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "015-paginas.wav",
+      "bytes": 73772,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "016-47.wav",
+      "bytes": 94252,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "017-a.wav",
+      "bytes": 32812,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "018-52.wav",
+      "bytes": 90156,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "019-con.wav",
+      "bytes": 28716,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "020-1-250.wav",
+      "bytes": 118828,
+      "source": "cache"
+    },
+    {
+      "lang": "es",
+      "file": "021-participantes.wav",
+      "bytes": 94252,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "000-le.wav",
+      "bytes": 20524,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "001-dr.wav",
+      "bytes": 61484,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "002-chen.wav",
+      "bytes": 36908,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "003-a.wav",
+      "bytes": 8236,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "004-publie.wav",
+      "bytes": 45100,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "005-les.wav",
+      "bytes": 16428,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "006-resultats.wav",
+      "bytes": 73772,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "007-en.wav",
+      "bytes": 4140,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "008-1984.wav",
+      "bytes": 118828,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "009-la.wav",
+      "bytes": 16428,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "010-section.wav",
+      "bytes": 61484,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "011-3.wav",
+      "bytes": 131116,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "012-du.wav",
+      "bytes": 45100,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "013-rapport.wav",
+      "bytes": 61484,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "014-couvre.wav",
+      "bytes": 36908,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "015-les.wav",
+      "bytes": 20524,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "016-pages.wav",
+      "bytes": 57388,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "017-47.wav",
+      "bytes": 69676,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "018-a.wav",
+      "bytes": 28716,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "019-52.wav",
+      "bytes": 73772,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "020-avec.wav",
+      "bytes": 57388,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "021-1.wav",
+      "bytes": 61484,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "022-250.wav",
+      "bytes": 90156,
+      "source": "cache"
+    },
+    {
+      "lang": "fr",
+      "file": "023-participants.wav",
+      "bytes": 73772,
+      "source": "cache"
+    }
+  ]
+}

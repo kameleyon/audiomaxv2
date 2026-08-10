@@ -39,6 +39,12 @@
 /CLAUDE.md                      Jury            # the working agreement; owner-approved changes only
 /resources/audits/              Jury            # verdicts and punch lists — committed, never rewritten
 /.gitignore                     Vault  Jury     # security/vault.md — the audits exception and the secret rules
+/.env.example                   Vault  Scribe   # the template whose whole job is to be safe to commit
+/.github/scripts/               Vault  Forge    # secret-scan.mjs IS the key-material control
+/.github/workflows/             Forge  Vault    # what actually runs the gates
+/package.json                   Forge            # scripts here are the only invocation path for every gate
+/eslint.config.mjs              Forge            # found by [WS-OWNED] on its first run, not by review
+/supabase/tests/                Atlas  Probe    # quality/probe.md — the schema proofs
 
 
 # ── Documentation (Scribe owns; Guide reports to Scribe) ─────────────────────
@@ -62,8 +68,8 @@
 /worker/                        Forge           # backend/forge.md
 /worker/src/queue/              Queue           # backend/queue.md — job queues and the render pipeline
 /worker/src/providers/          Forge  Oracle   # ai/oracle.md — cost-per-interaction and eval
-/worker/src/adapters/           Shield  Halo    # security/shield.md (SSRF, archives) + audit/halo.md (extraction fidelity)
-/worker/src/normalize/          Tongue  Halo    # per-language rule sets and what gets spoken
+/worker/src/adapters/           Forge  Shield  Halo  # backend/forge.md writes it; security/shield.md (SSRF, archives) + audit/halo.md (extraction fidelity) review it
+/worker/src/normalize/          Forge  Tongue  Halo  # backend/forge.md owns the TypeScript; platform/tongue.md the per-language rule sets and what gets spoken
 /worker/src/match/              Forge  Halo     # the sole placer of highlights — ADR-0002
 /aligner/                       Forge  Queue    # Python sidecar: transcription + match; container sizing
 
@@ -76,8 +82,8 @@
 
 # ── API surface and clients ──────────────────────────────────────────────────
 /openapi/                       Nexus  Scribe
-/apps/web/                         Halo  Optic     # audit/halo.md WCAG 2.2 AA; audit/optic.md UX
-/apps/mobile/                   Halo  Optic     # TalkBack and VoiceOver/iOS live here
+/apps/web/                      Arch  Vega  Halo  Optic  # frontend/arch.md owns the structure, frontend/vega.md the components; audit/halo.md WCAG 2.2 AA; audit/optic.md UX. J28-M5: this read `Halo Optic` — two AUDIT-layer agents owning code with NO author, which makes the reviewer the writer and there is then nobody left to review.
+/apps/mobile/                   Touch  Halo  Optic  # frontend/touch.md builds it; TalkBack and VoiceOver/iOS live here, so Halo is a co-owner and not a reviewer-of-record
 
 
 # ── Money ────────────────────────────────────────────────────────────────────
@@ -90,14 +96,15 @@
 # Phase 0.5 gates ALL ingest. Nothing here is a backlog item.
 /legal/                         Comply          # operations/comply.md — DMCA, ToS/AUP, retention
 /docs/legal/                    Comply  Proof
-/docs/subprocessors.md          Comply  Vault   # OpenRouter AND Google are both named subprocessors on the ht path — ADR-0003
+/docs/subprocessors.md          Comply  Vault   # OpenRouter AND Google are named subprocessors — ADR-0003 (the ht path was their original reason; ht left scope, the LLM text path did not)
 
 
 # ── i18n ─────────────────────────────────────────────────────────────────────
 # en / es / fr. An untranslated enum token is not a status message a user
 # can receive (WCAG 4.1.3), so the catalogue is reviewed, not translated blind.
 /i18n/                          Tongue  Locale  # platform/tongue.md, platform/locale.md
-/i18n/ht/                       Tongue  Halo    # the language with the fewest alternatives for its speakers
+# /i18n/ht/ REMOVED 2026-08-08 — `ht` left scope (docs/architecture/0005). The row
+# outlived the language by four rounds. If ht is restored, restore this line with it.
 
 
 # ── Tests and fixtures ───────────────────────────────────────────────────────
