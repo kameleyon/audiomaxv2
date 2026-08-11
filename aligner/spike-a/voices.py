@@ -79,8 +79,13 @@ measurement and asserts each control FAILS:
                 tokens it jumped over left unmatched, because a recovery that
                 credited them would be a recovery that invented coverage
 
-Every control is asserted in BOTH directions: it holds on clean input and it
-breaks on mutated input. A control that only ever passes is not a control.
+NOT every control is asserted in both directions, and `--self-test` NAMES the
+ones that are not (`J33-m1`). This paragraph used to claim all of them were while
+12 of 14 families had no `/mut` line — a harness overstating its own coverage, in
+the file whose subject is measuring honestly. The footer is COMPUTED from the
+control log, so a control added tomorrow without a mutation names itself in the
+same run instead of waiting two rounds for an auditor to read the ID table
+against the sentence beside the number.
 
 COST DISCIPLINE (owner's standing rule)
 ---------------------------------------
@@ -1090,10 +1095,31 @@ def self_test() -> int:
         by[cid] = by.get(cid, 0) + 1
     for cid in sorted(by):
         print(f"  {cid:16} {by[cid]}")
-    print("\n  Each control is asserted in BOTH directions: it holds on clean input and the")
-    print("  '/mut' variants prove it breaks on a defect. A control that only ever passes")
-    print("  is what this spike shipped five times.")
+    print(coverage_footer(log))
     return 0
+
+
+def coverage_footer(log: list) -> str:
+    """Name the control families asserted in ONE direction only.
+
+    `J33-m1`. This footer read "Each control is asserted in BOTH directions"
+    while 12 of 14 families carried no `/mut` variant. The honest form already
+    shipped in this repository — `doc-check --self-test` names its unmutated IDs
+    — and it is COMPUTED rather than hand-listed, because a hand-listed one goes
+    stale the first time somebody adds a control. Jury recorded the miss against
+    itself: round 32 passed this file without reading the footer against the ID
+    table, which is the failure mode a computed footer removes.
+    """
+    families = {cid.split("/")[0] for cid, _, _ in log}
+    mutated = {cid.split("/")[0] for cid, _, _ in log if cid.endswith("/mut")}
+    un = sorted(families - mutated)
+    n_un = sum(1 for cid, _, _ in log if cid.split("/")[0] in un)
+    return (f"\n  {len(mutated)} of {len(families)} control families are asserted in BOTH "
+            f"directions: they hold on\n  clean input and a '/mut' variant proves they break "
+            f"on a defect.\n  ONE DIRECTION ONLY ({len(un)} families, {n_un} assertions): "
+            f"{', '.join(un) if un else 'none'}.\n"
+            f"  Those hold on clean input and nothing here proves they would go red. A control\n"
+            f"  that only ever passes is what this spike shipped five times.")
 
 
 # ── Commands ─────────────────────────────────────────────────────────────────

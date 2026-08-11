@@ -484,6 +484,35 @@ def _respell_en_gb_to_us(text: str) -> str:
     return re.sub(r"[A-Za-z]+", lambda m: one(m.group(0)), text)
 
 
+# ── The chapter-length predicate — DEFINED ONCE ─────────────────────────────
+#
+# `J33-M2`. This lived as an inline expression inside `measure_clip` and was
+# RESTATED inside `self_test`, so `CTL-LENGTH` guarded a copy: the shipped
+# threshold could be changed to 100 and the control still reported 2/2. A control
+# that tests a copy is a rule addressed to whoever remembers to keep the copy in
+# step, which is exactly what `CTL-IMPORT` forbids seventy lines below it.
+#
+# The floors themselves are named constants for the same reason the bound and the
+# bar are imported rather than restated: a number that appears twice is a number
+# that can disagree with itself. 1000 display words and 300 s are the
+# `voice_langs` evidence floors, not tuning knobs.
+CHAPTER_MIN_DISPLAY_WORDS = 1000
+CHAPTER_MIN_CLIP_MS = 300000
+
+
+def supports_chapter_length_claim(display_words: int, seconds: float) -> bool:
+    """Is a figure taken on this clip admissible as a CHAPTER-LENGTH result?
+
+    Both floors, and BOTH are required: 1186 words spoken in 40 seconds is a
+    truncated render, and 400 seconds carrying 200 words is a paragraph read
+    slowly. `J29-C1` is a figure from a short fixture read as a chapter-length
+    result, and this is the predicate that makes that a computation instead of a
+    sentence in a report someone has to remember to write.
+    """
+    return bool(display_words >= CHAPTER_MIN_DISPLAY_WORDS
+                and seconds * 1000 >= CHAPTER_MIN_CLIP_MS)
+
+
 def measure_clip(kind: str, text: str, path: pathlib.Path) -> dict:
     """One clip, scored by `voices.score` — the instrument, imported."""
     obs, timing = V.decode(path, "en")
@@ -510,10 +539,10 @@ def measure_clip(kind: str, text: str, path: pathlib.Path) -> dict:
         # reported WITH its numbers and marked, never dropped and never rounded
         # up to "chapter length" by a reader who did not check.
         "floor_sync_matched_words_ge_200": matched_in_bound >= 200,
-        "floor_clip_ms_ge_300000": info["seconds"] * 1000 >= 300000,
+        "floor_clip_ms_ge_300000": info["seconds"] * 1000 >= CHAPTER_MIN_CLIP_MS,
         "floor_metric_is_bar": True,
-        "supports_chapter_length_claim": bool(
-            s["display_words"] >= 1000 and info["seconds"] * 1000 >= 300000),
+        "supports_chapter_length_claim": supports_chapter_length_claim(
+            s["display_words"], info["seconds"]),
     })
     # ── The orthography probe, on the SAME observations ──────────────────────
     # Only the CEILING is taken from the respelled run. The end-to-end figure of
@@ -832,16 +861,50 @@ def self_test() -> int:
            "the ceiling must be >= the coverage the matcher actually reached", log)
 
     # ── CTL-LENGTH — a chapter-length claim cannot be made by a short clip ───
-    # This is `J29-C1`'s shape: a figure from a short fixture read as a
-    # chapter-length result. It is a FIELD here, so the guard is a computation
-    # rather than a sentence in a report someone has to remember to write.
-    short_row = {"display_words": 224, "seconds": 73.18}
-    long_row = {"display_words": 1186, "seconds": 396.24}
-    supports = lambda r: bool(r["display_words"] >= 1000 and r["seconds"] * 1000 >= 300000)
-    _check(supports(short_row) is False, "CTL-LENGTH",
+    # `J33-M2`: this control USED TO REDEFINE the predicate inside itself, so the
+    # shipped threshold could be moved to 100 and the control still reported 2/2.
+    # It now calls the SHIPPED function — the same one `measure_clip` writes the
+    # field with — and pins BOTH floors at their boundary, so moving either
+    # constant turns a control red. Imported, never restated: `CTL-IMPORT`'s rule,
+    # applied to the thing `CTL-IMPORT` was sitting seventy lines above.
+    _check(supports_chapter_length_claim(224, 73.18) is False, "CTL-LENGTH",
            "224 display words / 73 s must NOT support a chapter-length claim", log)
-    _check(supports(long_row) is True, "CTL-LENGTH/mut",
+    _check(supports_chapter_length_claim(1186, 396.24) is True, "CTL-LENGTH",
            "1186 display words / 396 s must", log)
+    # THE BOUNDARY, AT LITERALS. A predicate asserted only at 224 and 1186
+    # survives any threshold between them, and a boundary written as
+    # `CHAPTER_MIN_DISPLAY_WORDS - 1` MOVES WITH THE CONSTANT — which is `J33-M2`
+    # a second time, in the fix for `J33-M2`. Caught by running Jury's own test:
+    # the first version of this control still reported 3/3 with the floor at 100.
+    # These four numbers are therefore literal, and the two constants are pinned
+    # beside them, so moving either floor turns a control red rather than quietly
+    # admitting a paragraph as a chapter.
+    _check(CHAPTER_MIN_DISPLAY_WORDS == 1000 and CHAPTER_MIN_CLIP_MS == 300000, "CTL-LENGTH",
+           f"the chapter floors are 1000 display words and 300000 ms — the `voice_langs` "
+           f"evidence floors, not tuning knobs. Moving one is a public act with a recorded "
+           f"reason, so it breaks this control on purpose. Got "
+           f"{CHAPTER_MIN_DISPLAY_WORDS} / {CHAPTER_MIN_CLIP_MS}", log)
+    _check(supports_chapter_length_claim(999, 600.0) is False, "CTL-LENGTH/mut",
+           "999 display words must fail however long the audio is — lowering the word floor "
+           "must break this", log)
+    _check(supports_chapter_length_claim(2000, 299.999) is False, "CTL-LENGTH/mut",
+           "and a clip one millisecond under 300 s must fail however many words it carries — "
+           "lowering the duration floor must break this", log)
+    # AND THE PUBLISHED FIELD IS THE PREDICATE'S OUTPUT, checked against the
+    # committed artifact rather than against a hand-written pair. This is the leg
+    # that could not exist while the predicate was an inline expression: it ties
+    # the function to the number a reader actually sees.
+    if ARTIFACT.exists():
+        art = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+        rows = [(c["kind"], c["display_words"], c["clip_seconds"],
+                 c["supports_chapter_length_claim"]) for c in art["clips"]]
+        _check(bool(rows) and all(supports_chapter_length_claim(w, s) is f for _, w, s, f in rows),
+               "CTL-LENGTH", f"every `supports_chapter_length_claim` in {ARTIFACT.name} must be "
+               f"what the shipped predicate returns for that row: {rows}", log)
+        _check(any(f for _, _, _, f in rows) and any(not f for _, _, _, f in rows),
+               "CTL-LENGTH/mut",
+               f"and the committed artifact must contain BOTH answers — a field that is true "
+               f"on every row is a field that has never been tested: {rows}", log)
 
     # ── CTL-ORTHO — the respelling ruleset does what its name says ───────────
     # Asserted in both directions: it rewrites British forms, and it is IDENTITY
@@ -899,9 +962,32 @@ def self_test() -> int:
         by[cid][1] += int(ok)
     for cid in sorted(by):
         print(f"  {cid:20} {by[cid][1]}/{by[cid][0]}")
-    print("\n  Each control is asserted in BOTH directions: it holds on clean input and the")
-    print("  '/mut' variants prove it breaks on a defect.")
+    print(coverage_footer(log))
     return 0 if passed == len(log) else 1
+
+
+def coverage_footer(log: list) -> str:
+    """Name the controls asserted in ONE direction only.
+
+    `J33-m1`. This footer used to read "Each control is asserted in BOTH
+    directions" while 9 of 39 assertions had no `/mut` line — a harness
+    OVERSTATING ITS OWN COVERAGE, in the file whose subject is measuring
+    honestly. The honest form already shipped in this repository:
+    `doc-check --self-test` names its unmutated IDs. It is COMPUTED, not
+    hand-listed, so a control added tomorrow without a `/mut` names itself here
+    in the same run rather than waiting for an auditor to read the ID table
+    against the sentence beside the number — which is how this went unreported
+    for two rounds, once by Jury itself.
+    """
+    families = {cid.split("/")[0] for cid, _, _ in log}
+    mutated = {cid.split("/")[0] for cid, _, _ in log if cid.endswith("/mut")}
+    un = sorted(families - mutated)
+    n_un = sum(1 for cid, _, _ in log if cid.split("/")[0] in un)
+    return (f"\n  {len(mutated)} of {len(families)} control families are asserted in BOTH "
+            f"directions: they hold on clean\n  input and a '/mut' variant proves they break "
+            f"on a defect.\n  ONE DIRECTION ONLY ({len(un)} families, {n_un} assertions): "
+            f"{', '.join(un) if un else 'none'}.\n"
+            f"  Those hold on clean input and nothing here proves they would go red.")
 
 
 def main() -> int:

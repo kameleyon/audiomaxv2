@@ -262,11 +262,16 @@ Two mitigations are in the plan, neither of them optional:
   bar: `matched_within_drift_pct >= 95` and `p95_abs_error_ms <= 300`, confirmed
   or moved **by** the measurement and not **after** it.
   *(Owner: Forge · due 2026-08-14.)*
-- **The `align_*` half of the message catalogue was recounted** to **20 keys /
-  60 strings** across the three languages. *That is the `align_*` budget only*
-  (`H20-C1`) — the catalogue's total is **~54 keys / ~162 strings** (spec §9,
-  recounted for `H26-C3`), and quoting 20/60 as the whole catalogue is precisely
-  the defect `H20-C1` was filed for. `no_transcriber`, `transcription_unreliable` and `wrong_match`
+- **The `align_*` half of the message catalogue was recounted** to **22 keys /
+  66 strings** across the three languages. *That is the `align_*` budget only*
+  (`H20-C1`) — the catalogue's total is **~56 keys / ~168 strings** (spec §9,
+  recounted for `H26-C3`, recounted again 2026-08-11 for `H34-C2`), and quoting
+  22/66 as the whole catalogue is precisely the defect `H20-C1` was filed for.
+  *(This ADR recorded **20 / 60** and **~54 / ~162** until 2026-08-11.
+  `H34-C2` added `incomplete_match` as a ninth `align_reason` cause, which adds
+  two reason sets and therefore two keys. **The numbers are updated rather than
+  annotated because they are a live budget Tongue scopes against, not a record
+  of what was decided** — spec §9 is the authority and this line mirrors it.)* `no_transcriber`, `transcription_unreliable` and `wrong_match`
   are the three states this architecture introduces and initially had **no string
   in any language**; `align_status: pending` is a state every rendition now
   passes through and had no key (`J15-C6`, `J17-M5`).

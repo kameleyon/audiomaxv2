@@ -1,0 +1,635 @@
+{
+  "_subject": "Where the English chapter clip's shortfall against the 95 bar comes from, and what two candidate fixes are worth. A follow-up to `spike-a-english.json`, whose `verdict.chapter_bound_by` is `drift`.",
+  "_supersedes": "NOTHING is withdrawn. `spike-a-english.json` remains the end-to-end measurement; its CHAPTER figures predate `worker/src/normalize/orthographyForms` and are reproduced here under `baseline_artifact` FROM THAT FILE, not retyped.",
+  "_instrument": "voices.score and voices.decode, IMPORTED from `aligner/spike-a/voices.py`: `worker/src/match/matchTokens` and `worker/src/normalize` reached through their CLIs, the shipped local three-point drift, the same `Mutation` knob. Decoder faster-whisper `base`, int8, the shipped configuration. Arm D adds torchaudio MMS_FA over the ASR transcript. `--self-test` asserts the import by identity and by behaviour, and asserts the orthography fold through the PRODUCT normaliser.",
+  "_limits": [
+    "ONE VOICE, ONE PROVIDER, NO REPLICATE, and the same two clips as `spike-a-english.json`. No English noise floor exists, so a difference of a point or two between arms on ONE clip is not resolvable. The arms are PAIRED on the same decode of the same audio, which is why their DIFFERENCES are readable where their absolute values carry the same one-clip uncertainty as the baseline.",
+    "ARM D IS A PROBE OF AN UNBUILT STAGE. No FA sidecar exists in `worker/`; SPIKE E priced that stage at 91.6% of the ASR stage again, so the +pp it reports is not free and the decision is the owner's, not this file's.",
+    "THE CAUSE PARTITION IS AN ORDERING, NOT A MODEL. A token satisfying two conditions is charged to the first in `CAUSES`. The prevalence columns exist precisely so a reader can see what the ordering hid.",
+    "ARM E IS NOT A PRODUCT FIGURE and its denominators are not the bar's. See the field `_this_is_not_a_product_figure`, which travels with it."
+  ],
+  "_mutation_active": false,
+  "drift_bound_ms": 250,
+  "bar_matched_within_drift_pct": 95.0,
+  "pause_threshold_ms": 150.0,
+  "baseline_artifact": {
+    "file": "spike-a-english.json",
+    "present": true,
+    "chapter_matched_within_drift_pct": 90.0,
+    "chapter_match_rate_pct": 97.8,
+    "chapter_coverage_ceiling_pct_any_matcher": 98.0,
+    "chapter_display_tokens_absent_from_transcript": 25,
+    "orthography_probe_predicted_ceiling_pct": 99.1,
+    "orthography_probe_predicted_absent_tokens": 11,
+    "_status": "MEASURED BEFORE `worker/src/normalize/orthographyForms` EXISTED. Its chapter figures are therefore superseded by `arm_a_as_shipped` in this file and `english.py --measure` HAS NOT BEEN RE-RUN -- re-running it moves a committed artifact that README, ADR-0006 and the glossary quote by value, which is a document change and not this file's to make. Owner: Forge, with Scribe. Until that re-run lands, `spike-a-english.json`'s chapter row is the figure BEFORE the fold and must be quoted as such."
+  },
+  "clips": [
+    {
+      "kind": "paragraph",
+      "lang_code": "en",
+      "audio_path": "en-para.wav",
+      "audio_sha256": "b8f7ed91d47229317755d34a3cd2c32faf438f88ac816f1638d06487b92ce2bb",
+      "clip_seconds": 73.18,
+      "display_words": 224,
+      "cpu_seconds": 57.73,
+      "arm_a_as_shipped": {
+        "match_rate_first_third_pct": 100.0,
+        "match_rate_last_third_pct": 98.6,
+        "tracking_ratio": 0.986,
+        "last_matched_display_idx": 223,
+        "matcher_desynced": false,
+        "admissible": true,
+        "asr_coverage_ceiling": {
+          "display_tokens": 224,
+          "display_tokens_absent_from_transcript": 1,
+          "coverage_ceiling_pct_any_matcher": 99.6,
+          "coverage_ceiling_clears_bar": true,
+          "coverage_ceiling_gap_to_bar_pp": -4.6,
+          "unplaced_display_tokens": 1,
+          "unplaced_but_present_in_transcript": 0,
+          "absent_display_tokens_sample": [
+            "Attendance"
+          ],
+          "_derivation": "coverage_ceiling_pct_any_matcher = 100 * (display_tokens - display_tokens_absent_from_transcript) / display_tokens. A display token counts as ABSENT when NO contiguous run of 1-3 observed tokens equals any sequence in that token's `forms` or `looseForms` from worker/src/normalize/spokenForms, and no grouped-digit form covering it matches an observed token's digits. Those are exactly the relaxations worker/src/match/matchTokens can apply, so a token absent here is one the recogniser did not emit in any form the matcher could accept, and NO matcher can place it. Order-free and one-to-many-free on purpose: it ignores monotonicity and lets one observation serve several display tokens, so it is a STRICT UPPER BOUND and a real matcher can only do worse. It is NOT a prediction of what a better matcher would score. The achieved figures are `match_rate_pct` (coverage this matcher reached) and `matched_within_drift_pct` (what survived the 250 ms bound); they are NOT restated here, so they cannot drift out of agreement with themselves. The load-bearing comparison is coverage_ceiling_pct_any_matcher against the bar: when the ceiling is below it, the bar is unreachable on this transcript no matter what the matcher does."
+        },
+        "resyncs": 0,
+        "resync_skipped_display_tokens": 0,
+        "resync_detail": [],
+        "display_words": 224,
+        "observed_tokens": 225,
+        "matched": 223,
+        "matched_within_drift_pct": 93.8,
+        "match_rate_pct": 99.6,
+        "hallucination_rate": 0.4,
+        "drift_measurable_tokens": 221,
+        "drift_admissible_tokens": 202,
+        "median_drift_ms": 58.2,
+        "p95_drift_ms": 245.5,
+        "median_drift_ms_sentence_excluded": 53.3,
+        "drift_bound_ms": 250,
+        "passes_matched_bar": false
+      },
+      "arm_b_offset_probe": {
+        "curve": [
+          {
+            "shift_ms": -250,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -225,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -200,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -175,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -150,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -125,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -100,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -75,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -50,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": -25,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 0,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 25,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 50,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 75,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 100,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 125,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 150,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 175,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 200,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 225,
+            "matched_within_drift_pct": 93.8
+          },
+          {
+            "shift_ms": 250,
+            "matched_within_drift_pct": 93.8
+          }
+        ],
+        "figure_range_over_all_shifts_pp": 0.0,
+        "best_shift_ms": -250,
+        "constant_offset_hypothesis_falsified": true,
+        "calibrate_py_fitted_en_shift_ms": 90,
+        "_derivation": "Every observed token moved by the same amount, then re-scored by the same `voices.score`. §6.1 drift compares a token against an interpolation between ITS NEIGHBOURS, so a uniform shift moves all three together and cannot change the residual. `figure_range_over_all_shifts_pp = 0.0` is therefore the EXPECTED result and a non-zero value would mean the drift measure is not local. The consequence for the product is the load-bearing part: the per-language calibration in `spike-a-calibration.json` cannot recover one token of `matched_within_drift_pct`, in any language, and must not be quoted as if it could."
+      },
+      "arm_c_cause_attribution": {
+        "drift_measurable_tokens": 221,
+        "out_of_bound_tokens": 11,
+        "out_of_bound_pp_of_all_display_tokens": 4.9,
+        "by_primary_cause": {
+          "neighbourhood_spans_paragraph_break": {
+            "failures": 0,
+            "failures_pct_of_out_of_bound": 0.0,
+            "pp_of_all_display_tokens": 0.0,
+            "condition_present_in_out_of_bound_pct": 0.0,
+            "condition_present_in_in_bound_pct": 0.0
+          },
+          "neighbourhood_spans_sentence_end": {
+            "failures": 2,
+            "failures_pct_of_out_of_bound": 18.2,
+            "pp_of_all_display_tokens": 0.9,
+            "condition_present_in_out_of_bound_pct": 18.2,
+            "condition_present_in_in_bound_pct": 8.1
+          },
+          "adjacent_silence_over_threshold": {
+            "failures": 4,
+            "failures_pct_of_out_of_bound": 36.4,
+            "pp_of_all_display_tokens": 1.8,
+            "condition_present_in_out_of_bound_pct": 54.5,
+            "condition_present_in_in_bound_pct": 19.0
+          },
+          "display_token_skipped_in_neighbourhood": {
+            "failures": 0,
+            "failures_pct_of_out_of_bound": 0.0,
+            "pp_of_all_display_tokens": 0.0,
+            "condition_present_in_out_of_bound_pct": 0.0,
+            "condition_present_in_in_bound_pct": 1.0
+          },
+          "no_named_cause": {
+            "failures": 5,
+            "failures_pct_of_out_of_bound": 45.5,
+            "pp_of_all_display_tokens": 2.2,
+            "condition_present_in_out_of_bound_pct": 45.5,
+            "condition_present_in_in_bound_pct": 80.0
+          }
+        },
+        "worst_15": [
+          {
+            "token": "the",
+            "signed_drift_ms": 432,
+            "primary_cause": "adjacent_silence_over_threshold"
+          },
+          {
+            "token": "kept",
+            "signed_drift_ms": 400,
+            "primary_cause": "adjacent_silence_over_threshold"
+          },
+          {
+            "token": "it.",
+            "signed_drift_ms": -391,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "euros",
+            "signed_drift_ms": 330,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "every",
+            "signed_drift_ms": -327,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "settled",
+            "signed_drift_ms": 327,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "pages",
+            "signed_drift_ms": 308,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "The",
+            "signed_drift_ms": 292,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "14",
+            "signed_drift_ms": -278,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "2023,",
+            "signed_drift_ms": -253,
+            "primary_cause": "adjacent_silence_over_threshold"
+          },
+          {
+            "token": "rather",
+            "signed_drift_ms": 252,
+            "primary_cause": "adjacent_silence_over_threshold"
+          }
+        ],
+        "_reading": "`by_primary_cause` PARTITIONS the out-of-bound tokens: each is attributed to the first condition it satisfies in a fixed order, so `failures` sums to `out_of_bound_tokens` and no token is counted twice. The two `condition_present_*` columns are PREVALENCES, not shares of the partition, and they are the load-bearing pair: a condition as common among the passing tokens as among the failing ones explains nothing, however large its count.",
+        "sign": {
+          "median_signed_drift_ms_all": -8.0,
+          "mean_signed_drift_ms_all": -0.3,
+          "out_of_bound_early": 4,
+          "out_of_bound_late": 7,
+          "_reading": "A near-zero median with the failures split BOTH ways is the signature of a predictor that mismodels local timing, not of a decoder with a constant lead. One-signed failures with a large median would be the opposite finding and would make `arm_b_offset_probe` the fix."
+        },
+        "pause_threshold_ms": 150.0
+      },
+      "arm_e_sentence_interior": {
+        "interior_measurable_tokens": 202,
+        "interior_in_bound_tokens": 193,
+        "interior_in_bound_pct": 95.5,
+        "boundary_measurable_tokens": 19,
+        "boundary_in_bound_tokens": 17,
+        "boundary_in_bound_pct": 89.5,
+        "_this_is_not_a_product_figure": "THE BAR IS OVER EVERY DISPLAY TOKEN AND STAYS THAT WAY. A reader follows a caret through sentence ends too, and a highlight that is reliable only mid-sentence is not a highlight that works. This pair is a DECOMPOSITION, published to locate the loss and to size what a pause-aware predictor could be worth if the owner ever decided to reopen §6.1's drift definition -- which this file does not propose and does not do. `matched_within_drift_pct` in `arm_a_as_shipped` is the only figure here that answers the product question. Note also that the denominators differ from the bar's: both exclude the unmatched tokens and the two endpoints, which the bar keeps (`J22-M4`)."
+      },
+      "arm_d_fa_refined": {
+        "chunks": 3,
+        "chunks_failed": 0,
+        "failures": [],
+        "observed_tokens": 225,
+        "observed_tokens_retimed": 225,
+        "chunk_seconds": 25.0,
+        "elapsed_seconds": 45.2,
+        "matched_within_drift_pct": 88.8,
+        "median_drift_ms": 40.1,
+        "p95_drift_ms": 312.4,
+        "match_rate_pct": 99.6,
+        "coverage_ceiling_pct_any_matcher": 99.6,
+        "delta_vs_as_shipped_pp": -5.0,
+        "clears_bar": false,
+        "matched_within_drift_ci95": [
+          84.0,
+          92.3
+        ],
+        "word_sequence_unchanged": true,
+        "_what_this_is": "torchaudio MMS_FA re-times the SAME observed words against the SAME audio. The transcript is the recogniser's, never the display text, so ADR-0002 holds and this is a REFINEMENT of the observation, not a prediction of it. It is a PROBE of a pipeline stage that is not built: shipping it means an FA sidecar in the worker, and SPIKE E measured that stage at 91.6% of the ASR stage's cost again."
+      }
+    },
+    {
+      "kind": "chapter",
+      "lang_code": "en",
+      "audio_path": "en-long.wav",
+      "audio_sha256": "cd7f9c82b7d975a95dda9de8dfafbc76491749760103be1b90d651a82e828a26",
+      "clip_seconds": 453.73,
+      "display_words": 1246,
+      "cpu_seconds": 411.64,
+      "arm_a_as_shipped": {
+        "match_rate_first_third_pct": 100.0,
+        "match_rate_last_third_pct": 98.3,
+        "tracking_ratio": 0.983,
+        "last_matched_display_idx": 1245,
+        "matcher_desynced": false,
+        "admissible": true,
+        "asr_coverage_ceiling": {
+          "display_tokens": 1246,
+          "display_tokens_absent_from_transcript": 11,
+          "coverage_ceiling_pct_any_matcher": 99.1,
+          "coverage_ceiling_clears_bar": true,
+          "coverage_ceiling_gap_to_bar_pp": -4.1,
+          "unplaced_display_tokens": 14,
+          "unplaced_but_present_in_transcript": 3,
+          "absent_display_tokens_sample": [
+            "francs",
+            "percent",
+            "percent",
+            "join",
+            "thirty",
+            "percent",
+            "percent",
+            "gabelle",
+            "livre",
+            "tournois",
+            "withdrawn"
+          ],
+          "_derivation": "coverage_ceiling_pct_any_matcher = 100 * (display_tokens - display_tokens_absent_from_transcript) / display_tokens. A display token counts as ABSENT when NO contiguous run of 1-3 observed tokens equals any sequence in that token's `forms` or `looseForms` from worker/src/normalize/spokenForms, and no grouped-digit form covering it matches an observed token's digits. Those are exactly the relaxations worker/src/match/matchTokens can apply, so a token absent here is one the recogniser did not emit in any form the matcher could accept, and NO matcher can place it. Order-free and one-to-many-free on purpose: it ignores monotonicity and lets one observation serve several display tokens, so it is a STRICT UPPER BOUND and a real matcher can only do worse. It is NOT a prediction of what a better matcher would score. The achieved figures are `match_rate_pct` (coverage this matcher reached) and `matched_within_drift_pct` (what survived the 250 ms bound); they are NOT restated here, so they cannot drift out of agreement with themselves. The load-bearing comparison is coverage_ceiling_pct_any_matcher against the bar: when the ceiling is below it, the bar is unreachable on this transcript no matter what the matcher does."
+        },
+        "resyncs": 0,
+        "resync_skipped_display_tokens": 0,
+        "resync_detail": [],
+        "display_words": 1246,
+        "observed_tokens": 1253,
+        "matched": 1232,
+        "matched_within_drift_pct": 90.9,
+        "match_rate_pct": 98.9,
+        "hallucination_rate": 1.0,
+        "drift_measurable_tokens": 1230,
+        "drift_admissible_tokens": 1078,
+        "median_drift_ms": 61.8,
+        "p95_drift_ms": 300.0,
+        "median_drift_ms_sentence_excluded": 55.5,
+        "drift_bound_ms": 250,
+        "passes_matched_bar": false
+      },
+      "arm_b_offset_probe": {
+        "curve": [
+          {
+            "shift_ms": -250,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -225,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -200,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -175,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -150,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -125,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -100,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -75,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -50,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": -25,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 0,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 25,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 50,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 75,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 100,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 125,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 150,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 175,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 200,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 225,
+            "matched_within_drift_pct": 90.9
+          },
+          {
+            "shift_ms": 250,
+            "matched_within_drift_pct": 90.9
+          }
+        ],
+        "figure_range_over_all_shifts_pp": 0.0,
+        "best_shift_ms": -250,
+        "constant_offset_hypothesis_falsified": true,
+        "calibrate_py_fitted_en_shift_ms": 90,
+        "_derivation": "Every observed token moved by the same amount, then re-scored by the same `voices.score`. §6.1 drift compares a token against an interpolation between ITS NEIGHBOURS, so a uniform shift moves all three together and cannot change the residual. `figure_range_over_all_shifts_pp = 0.0` is therefore the EXPECTED result and a non-zero value would mean the drift measure is not local. The consequence for the product is the load-bearing part: the per-language calibration in `spike-a-calibration.json` cannot recover one token of `matched_within_drift_pct`, in any language, and must not be quoted as if it could."
+      },
+      "arm_c_cause_attribution": {
+        "drift_measurable_tokens": 1230,
+        "out_of_bound_tokens": 97,
+        "out_of_bound_pp_of_all_display_tokens": 7.8,
+        "by_primary_cause": {
+          "neighbourhood_spans_paragraph_break": {
+            "failures": 13,
+            "failures_pct_of_out_of_bound": 13.4,
+            "pp_of_all_display_tokens": 1.0,
+            "condition_present_in_out_of_bound_pct": 13.4,
+            "condition_present_in_in_bound_pct": 2.2
+          },
+          "neighbourhood_spans_sentence_end": {
+            "failures": 42,
+            "failures_pct_of_out_of_bound": 43.3,
+            "pp_of_all_display_tokens": 3.4,
+            "condition_present_in_out_of_bound_pct": 56.7,
+            "condition_present_in_in_bound_pct": 8.6
+          },
+          "adjacent_silence_over_threshold": {
+            "failures": 25,
+            "failures_pct_of_out_of_bound": 25.8,
+            "pp_of_all_display_tokens": 2.0,
+            "condition_present_in_out_of_bound_pct": 79.4,
+            "condition_present_in_in_bound_pct": 20.6
+          },
+          "display_token_skipped_in_neighbourhood": {
+            "failures": 0,
+            "failures_pct_of_out_of_bound": 0.0,
+            "pp_of_all_display_tokens": 0.0,
+            "condition_present_in_out_of_bound_pct": 2.1,
+            "condition_present_in_in_bound_pct": 1.9
+          },
+          "no_named_cause": {
+            "failures": 17,
+            "failures_pct_of_out_of_bound": 17.5,
+            "pp_of_all_display_tokens": 1.4,
+            "condition_present_in_out_of_bound_pct": 17.5,
+            "condition_present_in_in_bound_pct": 79.2
+          }
+        },
+        "worst_15": [
+          {
+            "token": "1,250",
+            "signed_drift_ms": -546,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "use.",
+            "signed_drift_ms": -514,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "itself.",
+            "signed_drift_ms": -496,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "team,",
+            "signed_drift_ms": -485,
+            "primary_cause": "adjacent_silence_over_threshold"
+          },
+          {
+            "token": "means.",
+            "signed_drift_ms": -482,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "A",
+            "signed_drift_ms": -480,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "itself.",
+            "signed_drift_ms": -464,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "was.",
+            "signed_drift_ms": -454,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "plans.",
+            "signed_drift_ms": -447,
+            "primary_cause": "neighbourhood_spans_paragraph_break"
+          },
+          {
+            "token": "Accessibility",
+            "signed_drift_ms": 443,
+            "primary_cause": "neighbourhood_spans_paragraph_break"
+          },
+          {
+            "token": "protocol.",
+            "signed_drift_ms": -438,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "documents",
+            "signed_drift_ms": 437,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "prose.",
+            "signed_drift_ms": -433,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          },
+          {
+            "token": "new",
+            "signed_drift_ms": 433,
+            "primary_cause": "no_named_cause"
+          },
+          {
+            "token": "Typewritten",
+            "signed_drift_ms": 431,
+            "primary_cause": "neighbourhood_spans_sentence_end"
+          }
+        ],
+        "_reading": "`by_primary_cause` PARTITIONS the out-of-bound tokens: each is attributed to the first condition it satisfies in a fixed order, so `failures` sums to `out_of_bound_tokens` and no token is counted twice. The two `condition_present_*` columns are PREVALENCES, not shares of the partition, and they are the load-bearing pair: a condition as common among the passing tokens as among the failing ones explains nothing, however large its count.",
+        "sign": {
+          "median_signed_drift_ms_all": -6.7,
+          "mean_signed_drift_ms_all": -5.8,
+          "out_of_bound_early": 53,
+          "out_of_bound_late": 44,
+          "_reading": "A near-zero median with the failures split BOTH ways is the signature of a predictor that mismodels local timing, not of a decoder with a constant lead. One-signed failures with a large median would be the opposite finding and would make `arm_b_offset_probe` the fix."
+        },
+        "pause_threshold_ms": 150.0
+      },
+      "arm_e_sentence_interior": {
+        "interior_measurable_tokens": 1078,
+        "interior_in_bound_tokens": 1036,
+        "interior_in_bound_pct": 96.1,
+        "boundary_measurable_tokens": 152,
+        "boundary_in_bound_tokens": 97,
+        "boundary_in_bound_pct": 63.8,
+        "_this_is_not_a_product_figure": "THE BAR IS OVER EVERY DISPLAY TOKEN AND STAYS THAT WAY. A reader follows a caret through sentence ends too, and a highlight that is reliable only mid-sentence is not a highlight that works. This pair is a DECOMPOSITION, published to locate the loss and to size what a pause-aware predictor could be worth if the owner ever decided to reopen §6.1's drift definition -- which this file does not propose and does not do. `matched_within_drift_pct` in `arm_a_as_shipped` is the only figure here that answers the product question. Note also that the denominators differ from the bar's: both exclude the unmatched tokens and the two endpoints, which the bar keeps (`J22-M4`)."
+      },
+      "arm_d_fa_refined": {
+        "chunks": 17,
+        "chunks_failed": 0,
+        "failures": [],
+        "observed_tokens": 1253,
+        "observed_tokens_retimed": 1249,
+        "chunk_seconds": 25.0,
+        "elapsed_seconds": 200.5,
+        "matched_within_drift_pct": 92.2,
+        "median_drift_ms": 48.3,
+        "p95_drift_ms": 271.2,
+        "match_rate_pct": 98.9,
+        "coverage_ceiling_pct_any_matcher": 99.1,
+        "delta_vs_as_shipped_pp": 1.3,
+        "clears_bar": false,
+        "matched_within_drift_ci95": [
+          90.6,
+          93.6
+        ],
+        "word_sequence_unchanged": true,
+        "_what_this_is": "torchaudio MMS_FA re-times the SAME observed words against the SAME audio. The transcript is the recogniser's, never the display text, so ADR-0002 holds and this is a REFINEMENT of the observation, not a prediction of it. It is a PROBE of a pipeline stage that is not built: shipping it means an FA sidecar in the worker, and SPIKE E measured that stage at 91.6% of the ASR stage's cost again."
+      }
+    }
+  ],
+  "verdict": {
+    "_question": "How much of English's 5.0 pp shortfall is recoverable, by what, and what is left?",
+    "chapter_before_pct": 90.0,
+    "chapter_after_orthography_fold_pct": 90.9,
+    "orthography_fold_delta_pp": 0.9,
+    "orthography_fold_predicted_ceiling_pct": 99.1,
+    "orthography_fold_observed_ceiling_pct": 99.1,
+    "orthography_fold_predicted_absent_tokens": 11,
+    "orthography_fold_observed_absent_tokens": 11,
+    "orthography_fold_matches_its_prediction": true,
+    "chapter_after_fa_refinement_pct": 92.2,
+    "fa_refinement_delta_pp": 1.3,
+    "chapter_best_measured_pct": 92.2,
+    "clears_bar_as_shipped": false,
+    "clears_bar_with_fa_refinement": false,
+    "remaining_gap_to_bar_pp": 2.8,
+    "constant_offset_recoverable_pp": 0.0,
+    "residual_dominant_primary_cause": "neighbourhood_spans_sentence_end",
+    "residual_dominant_primary_cause_failures": 42,
+    "_reading": "ENGLISH DOES NOT CLEAR 95 AND IS NOT CLOSE TO IT. Both measured fixes are real and neither is large. The constant-offset hypothesis -- the cheap one, the one three artifacts pointed at -- is worth EXACTLY ZERO against this metric and is falsified on the clip, not argued away. What is left is prosodic: a character-linear predictor charges the silence at a sentence boundary to the words on either side of it, in opposite directions. That is a property of §6.1's drift DEFINITION, not of the decoder, and it is not this file's to change."
+  }
+}

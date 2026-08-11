@@ -21,10 +21,12 @@
  * asserting one would be prediction, which §6.1 removed.
  */
 import { abbreviationForms } from './abbreviations.ts';
+import { orthographyForms } from './orthography.ts';
 import { digitRuns, digitsOf, wholeNumberWord, yearForm, type Lang } from './numerals.ts';
 
 export { LANGS, isLang, digitsOf, digitRuns, type Lang } from './numerals.ts';
 export { ABBREVIATIONS, abbreviationForms } from './abbreviations.ts';
+export { orthographyForms, ORTHOGRAPHY_VARIANT_COUNT } from './orthography.ts';
 
 /**
  * Fold a token to its comparable form: NFC, lowercase, punctuation removed.
@@ -150,6 +152,12 @@ export function spokenForms(displayToken: string, lang: Lang): string[][] {
     if (runs.length) forms.push(runs);
   }
   for (const expansion of abbreviationForms(folded, lang)) forms.push([expansion]);
+  // The SAME word spelled the other way. Measured: 14 of the 25 display tokens
+  // absent from the English chapter transcript were British spellings the
+  // recogniser wrote in American form (`spike-a-english.json`,
+  // `clips[].orthography_probe`). A one-token alternative, so it does not
+  // disturb the longest-first order the caller depends on.
+  for (const spelling of orthographyForms(folded, lang)) forms.push([spelling]);
   for (const split of elisionForms(folded)) forms.push(split);
 
   // De-duplicated: `elisionForms` and an abbreviation expansion can arrive at the

@@ -72,6 +72,15 @@ jobs:
       - name: Test
         run: pnpm -r --if-present test
 
+  # The aligner's CONTAINER is measured by a different workflow —
+  # `.github/workflows/spike-e-container.yml`, which builds the image and runs
+  # SPIKE E's harness inside it. It is not a job here for two mechanical
+  # reasons: this workflow sets `cancel-in-progress: true`, which is right for a
+  # typecheck and would kill a half-finished measurement; and `paths:` filters
+  # are a property of a workflow rather than of a job, so a ~40-minute
+  # build-and-measure would otherwise run on every documentation commit. This
+  # job stays fast and unconditional; that one runs when the aligner changes or
+  # on demand.
   aligner:
     name: test (python sidecar)
     runs-on: ubuntu-latest
@@ -82,6 +91,15 @@ jobs:
           python-version: '3.12'
       - name: Test
         run: python -m unittest discover -s aligner/tests -t aligner -v
+
+      # The collector that assembles SPIKE E's container artifact. Its
+      # `--self-test` runs here as well as inside the measurement workflow,
+      # because the measurement workflow only fires when `aligner/**` changes —
+      # so a change that breaks the collector from elsewhere would otherwise go
+      # unnoticed until somebody spent 40 minutes of runner time finding out.
+      # It needs no Docker and takes about a second.
+      - name: SPIKE E collector self-test
+        run: python aligner/spike-e/ci_collect.py --self-test
 
   # ── The migrations, applied to a REAL PostgreSQL ────────────────────────────
   # Open since round 28 and named in two consecutive next-gate lists: the

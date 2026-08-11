@@ -103,8 +103,26 @@ const metricEnum = ALL_CODE.match(/create type public\.sync_metric as enum\s*\((
 // have kept reading the OLD file and reporting PASS on text the database no
 // longer runs. A guard that pins itself to the first version of the thing it
 // guards is worse than no guard: it goes green precisely when the fix lands.
+//
+// AND IT WAS STILL A LIST, ONE LEVEL DOWN. The filter used to name the two
+// violation functions: `private.rls_(obligated_tables|class_violations)`. A
+// migration that replaces ONLY `assert_rls_class_rule` defines neither, so it
+// was invisible to this filter, and `fnBody('assert_rls_class_rule')` kept
+// returning the SUPERSEDED body — with S16 and S17 both reporting PASS about
+// text the database no longer runs. S17's whole claim is "the static guards
+// read the definition IN FORCE", and S17 was the guard it failed to hold for.
+//
+// Reproduced before the fix: 20260810000200 replaces `assert_rls_class_rule`
+// to add the residue delegation; the harness reported 21/21 PASS while reading
+// 20260810000100's body. Found by running it, not by review — again.
+//
+// The filter is now a NAMING RULE rather than a list: a `private` function
+// whose name begins `rls_`, `align_`, `schema_` or `assert_` IS a rule
+// function. `set_updated_at` is deliberately excluded — it is a trigger helper,
+// not a rule, and pulling its migration in would only widen `ruleCode` for the
+// no-table-names check in S10.
 const RULE_FILES = files.filter((f) =>
-  /function\s+private\.rls_(obligated_tables|class_violations)\s*\(/i.test(CODE[f]));
+  /function\s+private\.(rls_|align_|schema_|assert_)\w*\s*\(/i.test(CODE[f]));
 const ruleCode = RULE_FILES.map((f) => CODE[f]).join('\n');
 
 // The BODIES of the two rule functions, not the whole file. `COMMENT ON` text
@@ -135,6 +153,39 @@ const fnBody = (name) => {
 const OBLIGATED_FN = fnBody('rls_obligated_tables');
 const VIOLATIONS_FN = fnBody('rls_class_violations');
 const ASSERT_FN = fnBody('assert_rls_class_rule');
+const RESIDUE_FN = fnBody('align_residue_violations');
+const RESIDUE_ASSERT_FN = fnBody('assert_align_residue_rule');
+
+// -- H34-C2 / J17-C3, 20260810000200 ----------------------------------------
+// Enum bodies come from ALL_CODE, not from `ruleCode`: a CREATE TYPE is not a
+// rule function and scoping it to RULE_FILES would silently read nothing.
+const enumBody = (name) =>
+  ALL_CODE.match(new RegExp(`create type public\\.${name} as enum\\s*\\(([\\s\\S]*?)\\n\\s*\\)`, 'i'))?.[1] ?? '';
+const enumVals = (name) => [...enumBody(name).matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+
+// §6.3:1499, in the spec's own row order. This array is the SPEC's nine.
+const SPEC_ALIGN_REASONS = [
+  'unsupported_language', 'low_confidence', 'engine_error', 'transcript_mismatch',
+  'no_transcriber', 'transcription_unreliable', 'wrong_match', 'voice_substituted',
+  'excessive_drop',
+];
+// THE DIVERGENCE REGISTER. Values the schema carries that §6.3 does not yet.
+// It is pinned, not open-ended: this proof fails if the set grows, and it fails
+// if the spec catches up without this line being retired. Writing a value into
+// the spec and not the schema is how H34-C2 happened; a register that can grow
+// in silence is how it would happen again.
+const ALIGN_REASON_DIVERGENCE = ['incomplete_match'];
+const GAP_REASONS = ['resync_skipped', 'unmatched_observation'];
+const PERMANENCES = ['permanent', 'retryable', 'render_specific'];
+const M_AR = files.find((f) => f.includes('align_residue'));
+
+// A permanence classifier's totality comes from having NO `else`/`when null`
+// escape: plpgsql raises case_not_found instead of returning a default.
+const classifier = (name) =>
+  ALL_CODE.match(new RegExp(`create function public\\.${name}\\s*\\([\\s\\S]*?\\$fn\\$([\\s\\S]*?)\\$fn\\$`, 'i'))?.[1] ?? '';
+const REASON_PERM_FN = classifier('align_reason_permanence');
+const GAP_PERM_FN = classifier('align_gap_permanence');
+const PERM_OF_FN = classifier('align_permanence_of');
 
 // The declaration of the violations function that is in force — its RETURN
 // signature lives outside the $fn$ body, so it needs its own last-wins slice.
@@ -295,6 +346,162 @@ const STATIC = [
         && /rls_class_violations/.test(ASSERT_FN)          // assert calls violations
         && !/\$fn\$/.test(OBLIGATED_FN + VIOLATIONS_FN + ASSERT_FN); // no body spans a delimiter
     }],
+
+  // -- H34-C2 + J17-C3, decided jointly (20260810000200) ---------------------
+
+  ['S18', 'align_reason is §6.3\'s nine IN ORDER plus a REGISTERED divergence, and nothing else',
+    () => {
+      const vals = enumVals('align_reason');
+      // The spec's nine, in the spec's order, first.
+      const head = vals.slice(0, SPEC_ALIGN_REASONS.length);
+      const tail = vals.slice(SPEC_ALIGN_REASONS.length);
+      return head.length === SPEC_ALIGN_REASONS.length
+        && head.every((v, i) => v === SPEC_ALIGN_REASONS[i])
+        // EXACTLY the registered divergence — not a superset, not a subset.
+        // Grows -> fails. Spec catches up and the register is not retired ->
+        // this stays green, so S19 pins the register text in the migration too.
+        && tail.length === ALIGN_REASON_DIVERGENCE.length
+        && tail.every((v, i) => v === ALIGN_REASON_DIVERGENCE[i]);
+    }],
+
+  ['S19', 'the divergence is REGISTERED in the migration, with the spec section it owes',
+    () => Boolean(M_AR)
+      && /DIVERGENCE, REGISTERED RATHER THAN DISCOVERED/.test(sqlOf[M_AR])
+      && ALIGN_REASON_DIVERGENCE.every((v) => sqlOf[M_AR].includes(v))
+      && /§6\.3:1499/.test(sqlOf[M_AR])
+      && /Owner Scribe with Forge/.test(sqlOf[M_AR])],
+
+  ['S20', 'align_gap_reason is exactly the two residue sides — one per address half',
+    () => {
+      const vals = enumVals('align_gap_reason');
+      return vals.length === 2 && vals.every((v, i) => v === GAP_REASONS[i]);
+    }],
+
+  ['S21', 'align_permanence is §6.3\'s three values',
+    () => {
+      const vals = enumVals('align_permanence');
+      return vals.length === 3 && PERMANENCES.every((p) => vals.includes(p));
+    }],
+
+  ['S22', 'both classifiers are TOTAL by construction — no else, no default, every value named',
+    () => Boolean(REASON_PERM_FN) && Boolean(GAP_PERM_FN)
+      // An `else` branch is the whole defect: it turns "somebody forgot to
+      // classify this" into a silent `retryable`, which is the H34-C2 shape
+      // (a fact the product emits and the schema quietly absorbs).
+      && !/\belse\b/i.test(REASON_PERM_FN.replace(/\belsif\b/gi, ''))
+      && !/\belse\b/i.test(GAP_PERM_FN)
+      && [...SPEC_ALIGN_REASONS, ...ALIGN_REASON_DIVERGENCE]
+           .every((v) => new RegExp(`when\\s+'${v}'`).test(REASON_PERM_FN))
+      && GAP_REASONS.every((v) => new RegExp(`when\\s+'${v}'`).test(GAP_PERM_FN))],
+
+  ['S23', 'the residue reasons are render_specific — not permanent, not retryable',
+    () => /when\s+'incomplete_match'\s+then\s+'render_specific'/.test(REASON_PERM_FN)
+      && GAP_REASONS.every((v) =>
+           new RegExp(`when\\s+'${v}'\\s+then\\s+'render_specific'`).test(GAP_PERM_FN))
+      // and the classification is argued from the artifact, not from the brief:
+      // the two clips that re-sync are REPLICATES of the same voice, which is
+      // why the remedy sentence may not promise that another voice fixes it.
+      && Boolean(M_AR) && /replicate 1 and 0 at\s*\n--\s*replicate 2/.test(sqlOf[M_AR])
+      && /must say RE-RENDER and must NOT promise that/.test(sqlOf[M_AR])],
+
+  ['S24', 'permanence is DERIVED from the SET, permanent > render_specific > retryable (N5-M6)',
+    () => Boolean(PERM_OF_FN)
+      && /foreach\s+r\s+in\s+array/i.test(PERM_OF_FN)
+      && /=\s*'permanent'\s*then\s*\n?\s*return\s+'permanent'/i.test(PERM_OF_FN)
+      && /seen_render_specific\s*:=\s*true/i.test(PERM_OF_FN)
+      && /return\s+'retryable'/i.test(PERM_OF_FN)
+      // An EMPTY set is `align_status: ok` and has no permanence. Returning
+      // 'retryable' there would assert a remedy for a rendition with no fault.
+      && /array_length\s*\(\s*p_reasons\s*,\s*1\s*\)\s+is\s+null\s*then\s*\n?\s*return\s+null/i.test(PERM_OF_FN)],
+
+  ['S25', 'the residue obligation is a CLASS RULE — no table name appears in its code',
+    () => Boolean(RESIDUE_FN)
+      && !/'segment_renditions'/.test(RESIDUE_FN)
+      && !/'align_gaps'/.test(RESIDUE_FN)
+      // Membership is derived from the catalog: a jsonb column named `words`
+      // (§7.2a). Renaming the TABLE does not escape it.
+      && /pg_attribute/.test(RESIDUE_FN)
+      && /typname\s*=\s*'jsonb'/.test(RESIDUE_FN)
+      && /attname\s*=\s*'words'/.test(RESIDUE_FN)
+      // ...and renaming the COLUMN moves it to "needs a ruling", never
+      // "exempt" — the same hole the RLS rule states rather than hides.
+      && /'unclassifiable_match_output'/.test(RESIDUE_FN)
+      && /word_timings\|/.test(RESIDUE_FN)],
+
+  ['S26', 'the residue store contract is checked on all four properties, not just existence',
+    () => /'residue_store_missing'/.test(RESIDUE_FN)
+      && /'residue_store_incomplete'/.test(RESIDUE_FN)
+      // reason NOT NULL, FK ON DELETE CASCADE, BOTH address halves, XOR check.
+      && /attnotnull/.test(RESIDUE_FN)
+      && /confdeltype\s*=\s*'c'/.test(RESIDUE_FN)
+      && ['display_char_start', 'display_char_end', 'observed_start_ms', 'observed_end_ms']
+           .every((c) => RESIDUE_FN.includes(c))
+      && /num_nulls/.test(RESIDUE_FN)
+      // SINGLE SOURCE. The first version required each test to appear TWICE —
+      // once selecting, once explaining — which is exactly what mutations M5
+      // and M7 defeated: they deleted the SELECTING copy and the counted guard
+      // stayed green on the explaining one. The selection is now derived from
+      // the same array as the message, so the count that matters is ONE.
+      && /cross join lateral/i.test(RESIDUE_FN)
+      && /array_length\s*\(\s*d\.defects\s*,\s*1\s*\)\s+is\s+not\s+null/i.test(RESIDUE_FN)
+      && count(/num_nulls/g, RESIDUE_FN) === 2          // the test + its message
+      && count(/confdeltype\s*=\s*'c'/g, RESIDUE_FN) === 1
+      // The four-column count is EXACT. `< 3` still selects the all-missing
+      // probe store, so only pinning the literal catches M7.
+      && /\)\s*\)\s*<>\s*4/.test(RESIDUE_FN)
+      // ...and the live probes that can actually see a deleted test exist.
+      && /G7a-d/.test(readFileSync(join(HERE, 'verify_voice_langs.mjs'), 'utf8'))],
+
+  ['S27', 'the residue rule RIDES ON the one statement CLAUDE.md makes mandatory',
+    () => Boolean(ASSERT_FN) && Boolean(RESIDUE_ASSERT_FN)
+      // Read off the definition IN FORCE. Before RULE_FILES was widened above,
+      // this read 20260810000100's body and could not have seen the delegation.
+      && /perform\s+private\.assert_align_residue_rule\s*\(\s*\)/i.test(ASSERT_FN)
+      && /if\s+v\.blocking\s+then/i.test(RESIDUE_ASSERT_FN)
+      && /raise\s+exception/i.test(RESIDUE_ASSERT_FN)
+      // The honest name exists and delegates, so CLAUDE.md's mandated line can
+      // be renamed without another migration.
+      && /create function private\.assert_schema_obligations/i.test(ALL_CODE)],
+
+  ['S28', 'the residue is NOT admitted to SpanReason, and the migration says why in hashes',
+    () => Boolean(M_AR)
+      // §7.2: disclosure_fingerprint -> text_hash, and voice_id is
+      // deliberately not a text_hash input. A render-dependent SpanReason
+      // would make every segment billable on every re-render — and would bill
+      // the very remedy `render_specific` recommends.
+      && /disclosure_fingerprint/.test(sqlOf[M_AR])
+      && /text_hash/.test(sqlOf[M_AR])
+      && /SpanReason stays at 16 values/.test(sqlOf[M_AR])
+      // Computed, not asserted: enumerate EVERY enum type the migrations
+      // create and check that no other one has taken a residue reason as a
+      // member. The first version of this clause greped ALL_CODE for the value
+      // outside the enum block — which `align_gap_permanence`'s CASE satisfies
+      // legitimately, so it failed on correct code. A guard that fires on the
+      // right answer is the J28-minor-a shape; this one reads the type system.
+      && (() => {
+        const types = [...ALL_CODE.matchAll(
+          /create type public\.(\w+) as enum\s*\(([\s\S]*?)\n\s*\)\s*;/gi)];
+        // Every enum in the schema is accounted for, so a NEW enum carrying a
+        // residue reason cannot slip past by not being in a list here.
+        if (types.length < 5) return false;
+        return types.every(([, name, body]) =>
+          name === 'align_gap_reason'
+          || !GAP_REASONS.some((v) => body.includes(`'${v}'`)));
+      })()],
+
+  ['S29', 'the store that cannot land yet has its contract written out, RLS included',
+    () => Boolean(M_AR)
+      && /create table public\.align_gaps/i.test(sqlOf[M_AR])
+      && /align_gaps_one_address_half/.test(sqlOf[M_AR])
+      // Erasure cascades (CLAUDE.md constraint 6) and the verbatim-text column
+      // is named for §7.4 rather than assumed covered by it (J17-M4).
+      && /on delete cascade/i.test(sqlOf[M_AR])
+      && /§7\.4/.test(sqlOf[M_AR])
+      // It is a CHILD of a table that does not exist, and the migration says
+      // so rather than shipping an FK-less table with verbatim document text
+      // and no RLS.
+      && /segment_renditions` DOES NOT EXIST|segment_renditions\*\* DOES NOT EXIST|`segment_renditions` DOES NOT EXIST/.test(sqlOf[M_AR])
+      && /would ship unprotected/.test(sqlOf[M_AR])],
 ];
 
 // ---------------------------------------------------------------------------
@@ -672,6 +879,377 @@ end
 $probe$;
 
 drop table public.verify_cols;
+
+-- ===========================================================================
+-- G1..G11 — H34-C2 + J17-C3: THE ALIGN RESIDUE, EXERCISED AGAINST A REAL
+-- CATALOG.
+--
+-- The static proofs above establish that the migration SAYS these things.
+-- These establish that PostgreSQL DOES them — which is the difference H34-C2
+-- is entirely about: resync_skipped_display_tokens is SAID by the product,
+-- measured at 9 and 25, and enforced by nothing.
+-- ===========================================================================
+
+-- G1 — every align_reason value is classified. Read from the CATALOG, so a
+-- value added without a classification fails HERE and not in production.
+do $probe$
+declare r public.align_reason; n integer := 0;
+begin
+  for r in select unnest(enum_range(null::public.align_reason)) loop
+    if public.align_reason_permanence(r) is null then
+      raise exception 'G1 FAILED — align_reason % classified as NULL', r;
+    end if;
+    n := n + 1;
+  end loop;
+  if n <> 10 then
+    raise exception 'G1 FAILED — align_reason has % values, expected 10', n;
+  end if;
+  raise notice 'G1 ok — all 10 align_reason values classify, enumerated from the catalog';
+end
+$probe$;
+
+-- G2 — and BOTH residue reasons, from the catalog for the same reason.
+do $probe$
+declare g public.align_gap_reason; n integer := 0;
+begin
+  for g in select unnest(enum_range(null::public.align_gap_reason)) loop
+    if public.align_gap_permanence(g) <> 'render_specific' then
+      raise exception 'G2 FAILED — % is %, not render_specific',
+        g, public.align_gap_permanence(g);
+    end if;
+    n := n + 1;
+  end loop;
+  if n <> 2 then raise exception 'G2 FAILED — align_gap_reason has % values', n; end if;
+  raise notice 'G2 ok — both residue reasons are render_specific: a re-render is a real remedy';
+end
+$probe$;
+
+-- G3 — the SET derivation (N5-M6): permanent beats render_specific beats
+-- retryable, and an empty set has no permanence at all.
+do $probe$
+begin
+  if public.align_permanence_of(array['engine_error','incomplete_match']::public.align_reason[])
+     <> 'render_specific' then raise exception 'G3 FAILED — render_specific did not beat retryable'; end if;
+  if public.align_permanence_of(array['incomplete_match','excessive_drop']::public.align_reason[])
+     <> 'permanent' then raise exception 'G3 FAILED — permanent did not win'; end if;
+  if public.align_permanence_of(array['engine_error']::public.align_reason[])
+     <> 'retryable' then raise exception 'G3 FAILED — lone engine_error was not retryable'; end if;
+  if public.align_permanence_of('{}'::public.align_reason[]) is not null then
+    raise exception 'G3 FAILED — an EMPTY reason set produced a permanence'; end if;
+  raise notice 'G3 ok — permanence is derived from the SET, and an empty set has none';
+end
+$probe$;
+
+-- G4 — a NULL element is a producer bug and is refused, not skipped. Skipping
+-- it would compute a permanence from a set nobody wrote.
+do $probe$
+declare fired boolean := false;
+begin
+  begin
+    perform public.align_permanence_of(array['engine_error', null]::public.align_reason[]);
+  exception when others then fired := true;
+  end;
+  if not fired then raise exception 'G4 FAILED — a NULL reason element was silently skipped'; end if;
+  raise notice 'G4 ok — a NULL inside the reason array RAISES rather than being skipped';
+end
+$probe$;
+
+-- G5 — the rule is SILENT on a schema with no match-output store. A rule that
+-- fires on the correct configuration is a rule that gets commented out.
+do $probe$
+begin
+  if exists (select 1 from private.align_residue_violations()) then
+    raise exception 'G5 FAILED — the residue rule fires on the shipped schema';
+  end if;
+  raise notice 'G5 ok — the residue rule is silent until a match-output store exists';
+end
+$probe$;
+
+-- G6 — THE FINDING, IN THE FORM IN WHICH IT WOULD RECUR. A match-output store
+-- with no residue store must stop the migration, through the one statement
+-- CLAUDE.md makes mandatory.
+create table public.verify_rend (
+  id    uuid primary key default gen_random_uuid(),
+  words jsonb
+);
+
+do $probe$
+declare fired boolean := false; m text;
+begin
+  begin perform private.assert_rls_class_rule();
+  exception when others then fired := true; m := SQLERRM;
+  end;
+  if not fired then
+    raise exception 'G6 FAILED — a match-output store with no residue store did not block';
+  end if;
+  if m not like '%residue%' then
+    raise exception 'G6 FAILED — it blocked, but not on the residue rule: %', m;
+  end if;
+  raise notice 'G6 ok — H34-C2 cannot recur silently: the mandated assert refuses the migration';
+end
+$probe$;
+
+-- G7 — a residue store that is PRESENT but cannot carry the fact. Every
+-- missing property is named, not just the first one found: a message that
+-- names one of four defects sends an engineer back three more times.
+create table public.verify_gaps_bad (
+  id             uuid primary key default gen_random_uuid(),
+  verify_rend_id uuid references public.verify_rend (id),
+  reason         public.align_gap_reason
+);
+
+do $probe$
+declare k text; r text;
+begin
+  select kind, reason into k, r from private.align_residue_violations()
+   where relid = 'public.verify_gaps_bad'::regclass;
+  if k is distinct from 'residue_store_incomplete' then
+    raise exception 'G7 FAILED — an unusable residue store reported as %', coalesce(k, 'NOTHING');
+  end if;
+  if r not like '%nullable%' or r not like '%ON DELETE CASCADE%'
+     or r not like '%address columns%' or r not like '%num_nulls%' then
+    raise exception 'G7 FAILED — the reason named only some of the four defects: %', r;
+  end if;
+  raise notice 'G7 ok — an incomplete residue store names EVERY missing property, not the first';
+end
+$probe$;
+
+drop table public.verify_gaps_bad;
+
+-- G7a..G7d — EACH PROPERTY, ON ITS OWN. G7 above cannot tell WHICH test
+-- selected the row: the store is missing all four, so any one surviving test
+-- keeps it green. Mutations M5 (delete the num_nulls test) and M7 (weaken the
+-- four-column count) both walked straight through G7 AND through the static
+-- guard, because the rule listed the four tests twice — once to select, once
+-- to explain — and only the explaining copy was checked.
+--
+-- These four stores are COMPLETE EXCEPT ONE THING each, so a deleted test
+-- shows up as a store that is silently accepted. That is the only shape of
+-- probe that can see it.
+do $probe$
+declare
+  spec       text;
+  variants   text[] := array[
+    -- name,           the one property removed,        DDL fragment overrides
+    'nullable_reason', 'no_cascade', 'missing_address_col', 'no_xor_check'];
+  v          text;
+  ddl        text;
+  k          text;
+  r          text;
+  expect     text;
+begin
+  foreach v in array variants loop
+    -- Every variant is the full contract with exactly one property withdrawn.
+    ddl := 'create table public.verify_one (
+              id uuid primary key default gen_random_uuid(),
+              verify_rend_id uuid not null references public.verify_rend (id) '
+           || case when v = 'no_cascade' then '' else 'on delete cascade' end || ',
+              reason public.align_gap_reason '
+           || case when v = 'nullable_reason' then '' else 'not null' end || ',
+              display_char_start integer,
+              display_char_end integer,
+              display_word_count integer,
+              observed_start_ms integer,
+              '
+           || case when v = 'missing_address_col' then '' else 'observed_end_ms integer,' end || '
+              observed_word text'
+           || case when v = 'no_xor_check' then ''
+                   else ', constraint verify_one_xor check (
+                           num_nulls(display_char_start, display_char_end) in (0, 2))' end
+           || ')';
+    execute ddl;
+
+    expect := case v
+                when 'nullable_reason'     then '%nullable%'
+                when 'no_cascade'          then '%ON DELETE CASCADE%'
+                when 'missing_address_col' then '%address columns%'
+                when 'no_xor_check'        then '%num_nulls%'
+              end;
+
+    select kind, reason into k, r from private.align_residue_violations()
+     where relid = 'public.verify_one'::regclass;
+
+    if k is distinct from 'residue_store_incomplete' then
+      raise exception 'G7a-d FAILED — a store missing ONLY "%" was ACCEPTED (kind %)',
+        v, coalesce(k, 'NOTHING');
+    end if;
+    if r not like expect then
+      raise exception 'G7a-d FAILED — a store missing ONLY "%" was reported as: %', v, r;
+    end if;
+    -- and it must not invent the other three
+    if (select count(*) from unnest(string_to_array(r, '; ')) x) <> 1 then
+      raise exception 'G7a-d FAILED — a store missing ONLY "%" reported % defects: %',
+        v, (select count(*) from unnest(string_to_array(r, '; ')) x), r;
+    end if;
+
+    execute 'drop table public.verify_one';
+  end loop;
+  raise notice 'G7a-d ok — each of the four store properties is checked ON ITS OWN, and named exactly';
+end
+$probe$;
+
+-- G8 — the contract as written in 20260810000200 SATISFIES the rule. A
+-- contract the rule would still reject is a contract nobody can satisfy.
+create table public.verify_gaps (
+  id                  uuid primary key default gen_random_uuid(),
+  verify_rend_id      uuid not null references public.verify_rend (id) on delete cascade,
+  reason              public.align_gap_reason not null,
+  display_char_start  integer,
+  display_char_end    integer,
+  display_word_count  integer,
+  observed_start_ms   integer,
+  observed_end_ms     integer,
+  observed_word       text,
+  created_at          timestamptz not null default now(),
+  updated_at          timestamptz not null default now(),
+  constraint verify_gaps_one_address_half check (
+    case reason
+      when 'resync_skipped' then
+        num_nulls(display_char_start, display_char_end, display_word_count) = 0
+        and num_nulls(observed_start_ms, observed_end_ms, observed_word) = 3
+      when 'unmatched_observation' then
+        num_nulls(display_char_start, display_char_end, display_word_count) = 3
+        and num_nulls(observed_start_ms, observed_end_ms, observed_word) = 0
+    end
+  )
+);
+
+select private.assert_rls_class_rule();
+do $probe$
+begin raise notice 'G8 ok — the contract written in the migration satisfies the rule as written'; end
+$probe$;
+
+-- G9 — EXACTLY ONE ADDRESS HALF, and it is a function of the reason. This is
+-- the joint decision made executable: both halves is a lie about what was
+-- observed, neither half is a tally with a table around it.
+insert into public.verify_rend (id, words)
+values ('00000000-0000-4000-8000-00000000aaaa', '[]'::jsonb);
+
+do $probe$
+declare fired boolean := false;
+begin
+  begin
+    insert into public.verify_gaps
+      (verify_rend_id, reason, display_char_start, display_char_end,
+       display_word_count, observed_start_ms)
+    values ('00000000-0000-4000-8000-00000000aaaa', 'resync_skipped', 10, 40, 7, 1200);
+  exception when check_violation then fired := true;
+  end;
+  if not fired then raise exception 'G9 FAILED — a row carrying BOTH address halves was accepted'; end if;
+
+  fired := false;
+  begin
+    insert into public.verify_gaps (verify_rend_id, reason)
+    values ('00000000-0000-4000-8000-00000000aaaa', 'resync_skipped');
+  exception when check_violation then fired := true;
+  end;
+  if not fired then raise exception 'G9 FAILED — a row carrying NEITHER address half was accepted'; end if;
+
+  fired := false;
+  begin
+    insert into public.verify_gaps
+      (verify_rend_id, reason, display_char_start, display_char_end, display_word_count)
+    values ('00000000-0000-4000-8000-00000000aaaa', 'unmatched_observation', 10, 40, 7);
+  exception when check_violation then fired := true;
+  end;
+  if not fired then
+    raise exception 'G9 FAILED — an observation-side gap wearing a DISPLAY address was accepted';
+  end if;
+  raise notice 'G9 ok — exactly one address half, and WHICH half is a function of the reason';
+end
+$probe$;
+
+-- G10 — both sides of the residue actually store, each with its own half.
+-- The values are H34-C2's own measurement shape (a 7-token run at display
+-- 446..453) — a CONSTRAINT PROBE, rolled back, asserting nothing about a clip.
+insert into public.verify_gaps
+  (verify_rend_id, reason, display_char_start, display_char_end, display_word_count)
+values ('00000000-0000-4000-8000-00000000aaaa', 'resync_skipped', 2431, 2478, 7);
+
+insert into public.verify_gaps
+  (verify_rend_id, reason, observed_start_ms, observed_end_ms, observed_word)
+values ('00000000-0000-4000-8000-00000000aaaa', 'unmatched_observation', 41200, 41450, 'probe');
+
+do $probe$
+declare n integer;
+begin
+  select count(*) into n from public.verify_gaps;
+  if n <> 2 then raise exception 'G10 FAILED — % rows stored, expected 2', n; end if;
+  raise notice 'G10 ok — a skipped display run and an unmatched observation both persist';
+end
+$probe$;
+
+-- G11 — erasure cascades (CLAUDE.md constraint 6). A takedown that leaves the
+-- residue behind leaves verbatim document text behind.
+delete from public.verify_rend where id = '00000000-0000-4000-8000-00000000aaaa';
+do $probe$
+declare n integer;
+begin
+  select count(*) into n from public.verify_gaps;
+  if n <> 0 then raise exception 'G11 FAILED — % residue rows survived the parent delete', n; end if;
+  raise notice 'G11 ok — deleting the rendition erases its residue, verbatim text included';
+end
+$probe$;
+
+drop table public.verify_gaps;
+
+-- G12 — a residue store attached to the WRONG parent does not discharge the
+-- obligation. The FK is the link; a table that merely exists is not one.
+create table public.verify_other (id uuid primary key default gen_random_uuid());
+create table public.verify_gaps_elsewhere (
+  id                  uuid primary key default gen_random_uuid(),
+  verify_other_id     uuid not null references public.verify_other (id) on delete cascade,
+  reason              public.align_gap_reason not null,
+  display_char_start  integer,
+  display_char_end    integer,
+  display_word_count  integer,
+  observed_start_ms   integer,
+  observed_end_ms     integer,
+  observed_word       text,
+  constraint verify_gaps_elsewhere_one_half check (
+    num_nulls(display_char_start, display_char_end, display_word_count) in (0, 3)
+    and num_nulls(observed_start_ms, observed_end_ms, observed_word) in (0, 3)
+  )
+);
+
+do $probe$
+declare k text;
+begin
+  select kind into k from private.align_residue_violations()
+   where relid = 'public.verify_rend'::regclass;
+  if k is distinct from 'residue_store_missing' then
+    raise exception 'G12 FAILED — a residue store on another parent discharged the obligation (%)',
+      coalesce(k, 'NOTHING');
+  end if;
+  raise notice 'G12 ok — the obligation is discharged by the FOREIGN KEY, not by a table existing';
+end
+$probe$;
+
+drop table public.verify_gaps_elsewhere;
+drop table public.verify_other;
+
+-- G13 — renaming the column moves a table to "needs a ruling", never to
+-- "exempt". The same hole the RLS rule states rather than hides.
+drop table public.verify_rend;
+create table public.verify_rend2 (
+  id           uuid primary key default gen_random_uuid(),
+  word_timings jsonb
+);
+
+do $probe$
+declare k text; b boolean;
+begin
+  select kind, blocking into k, b from private.align_residue_violations()
+   where relid = 'public.verify_rend2'::regclass;
+  if k is distinct from 'unclassifiable_match_output' or b is distinct from true then
+    raise exception 'G13 FAILED — a renamed match-output column reported as % / blocking=%',
+      coalesce(k, 'NOTHING'), coalesce(b::text, 'NULL');
+  end if;
+  raise notice 'G13 ok — a renamed match-output column needs a RULING, and is not auto-exempt';
+end
+$probe$;
+
+drop table public.verify_rend2;
 
 -- L6 — the rule holds over the whole schema, not just these two tables.
 select private.assert_rls_class_rule();

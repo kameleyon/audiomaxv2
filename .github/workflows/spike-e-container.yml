@@ -1,0 +1,488 @@
+# ── SPIKE E, the container half ──────────────────────────────────────────────
+#
+# `aligner/spike-e/out/spike-e-results.json` answers image size, memory and cold
+# start from the Windows workstation and leaves the roadmap's actual question —
+# realtime factor on container-grade CPU — as
+# `answer_4_realtime_factor.container_value: null`, `kind: "NOT MEASURED"`, with
+# `_no_substitute_offered`. That refusal was correct: Docker Desktop's Linux
+# engine cannot start on that host (`HypervisorPlatform: Disabled`, the box is
+# already a guest, WSL2 cannot create its VM), and simulating the number would
+# have been the exact defect the spike exists to avoid.
+#
+# THIS IS HOW THE REFUSAL IS DISCHARGED, NOT UNDONE. The artifact named the fix
+# itself, under `container_measurement_blocked.what_would_be_needed`: *"any
+# linux/amd64 Docker daemon — a GitHub Actions ubuntu-latest job is sufficient
+# and free"*, followed by four commands. This job runs those commands.
+#
+# ── WHY THIS IS NOT A JOB IN `ci.yml` ───────────────────────────────────────
+# Two reasons, both mechanical rather than stylistic:
+#
+#   1. `ci.yml` sets `cancel-in-progress: true`. That is right for a typecheck
+#      and wrong for a measurement: a second push would kill a half-finished
+#      measurement and the run would be wasted. This workflow's concurrency
+#      group is its own and does NOT cancel.
+#   2. `paths:` filters are a property of a WORKFLOW, not of a job. A ~40-minute
+#      build-and-measure on every documentation commit is a job people turn off.
+#      Here it runs when the thing being measured changes, or on demand.
+#
+# ── WHAT IS PINNED, AND TO WHAT ─────────────────────────────────────────────
+#   runner   `ubuntu-24.04`, NOT `ubuntu-latest`. The runner is this
+#            measurement's hardware. `ubuntu-latest` is a moving alias, and a
+#            measurement whose host silently changes underneath it cannot be
+#            compared with itself next quarter. The roadmap says "ubuntu-latest"
+#            because that is what was free and available; what it needs is a
+#            linux/amd64 daemon, which this is.
+#   python   whatever `aligner/Dockerfile` declares — `python:3.12-slim` — since
+#            the CONTAINER is what deploys and the runner is only its host. The
+#            base image DIGEST is recorded below, so the image measured is
+#            identifiable later even after the tag moves.
+#   postgres not applicable here. The `migrations` job in `ci.yml` pins 15 and
+#            17 because Supabase serves those and the deploy version is declared
+#            nowhere in this repository; nothing in this job touches a database.
+#
+# ── WHAT THIS JOB CANNOT DO ─────────────────────────────────────────────────
+# It cannot commit its own artifact. `permissions: contents: read` is deliberate
+# and `CLAUDE.md` forbids any commit that Jury has not gated — a CI job that
+# pushed its own measurement would be a route around the gate. The artifact is
+# uploaded; a human or agent downloads it into `aligner/spike-e/out/` and commits
+# it under the gate like anything else.
+name: SPIKE E — aligner container measurement
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'aligner/Dockerfile'
+      - 'aligner/requirements.txt'
+      - 'aligner/requirements-whisperx.txt'
+      - 'aligner/.dockerignore'
+      - 'aligner/spike-e/**'
+      - '!aligner/spike-e/out/**'
+      - '.github/workflows/spike-e-container.yml'
+
+# Deliberately NOT `cancel-in-progress`. See the header.
+concurrency:
+  group: spike-e-container-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    name: build, size and measure the aligner container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      # The two limits `spike-e-results.json` RECOMMENDS, so this job tests the
+      # recommendation instead of restating it. They are MB because `docker
+      # --memory` takes a suffix and integer arithmetic in shell does not take
+      # "2.5g".
+      REC_UNCHUNKED_MB: 5120
+      REC_CHUNKED_MB: 2560
+      # The generous limit the three REQUIRED runs use. A required run must not
+      # test a tight limit: "5 GiB is not enough" is a correct answer, and it
+      # must not be able to take the realtime factor down with it.
+      HEADROOM_MB: 8192
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Runs BEFORE anything is measured, on the secret-scan pattern already in
+      # `ci.yml`: a collector with no mutation test is an attestation, not a
+      # control. This proves the arithmetic and proves each guard REJECTS the
+      # corresponding way of measuring nothing — a missing required run, a null
+      # realtime factor, a zero image size, an unlabelled number, a null cold
+      # start. If the collector is broken, this fails in 2 seconds instead of
+      # after a 40-minute build.
+      - name: Prove the collector's guards bite
+        run: python3 aligner/spike-e/ci_collect.py --self-test
+
+      - name: Reclaim disk, and record how much there was
+        # The baked image is ~2.4 GiB estimated and the build downloads ~450 MiB
+        # of wheels plus ~1.3 GiB of model weights. Runner images ship several
+        # toolchains this job never uses. Failures are tolerated — this is
+        # headroom, not a dependency — but the `df` output is recorded either
+        # way so a disk-pressure failure is diagnosable rather than mysterious.
+        run: |
+          set -uo pipefail
+          df -h / | tee /tmp/df-before.txt
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          sudo rm -rf /usr/local/lib/android || true
+          df -h / | tee /tmp/df-after.txt
+
+      - name: Record the runner — a figure travels with the box it came from
+        run: |
+          set -euo pipefail
+          mkdir -p aligner/spike-e/out/ci
+          python3 - <<'PY'
+          import json, os, platform, re, subprocess
+
+          def first(path, pattern):
+              try:
+                  with open(path, "r", encoding="utf-8") as fh:
+                      for line in fh:
+                          m = re.match(pattern, line)
+                          if m:
+                              return m.group(1).strip()
+              except OSError:
+                  return None
+              return None
+
+          def cmd(*argv):
+              try:
+                  return subprocess.run(argv, capture_output=True, text=True, timeout=60).stdout.strip()
+              except Exception:
+                  return None
+
+          mem_kb = first("/proc/meminfo", r"MemTotal:\s+(\d+) kB")
+          facts = {
+              "kind": "MEASURED",
+              "runs_on": "ubuntu-24.04",
+              "image_os": os.environ.get("ImageOS"),
+              "image_version": os.environ.get("ImageVersion"),
+              "kernel": platform.release(),
+              "machine": platform.machine(),
+              "cpu_model": first("/proc/cpuinfo", r"model name\s*:\s*(.+)"),
+              "vcpus": os.cpu_count(),
+              "mem_total_bytes": int(mem_kb) * 1024 if mem_kb else None,
+              "docker_version": cmd("docker", "version", "--format", "{{.Server.Version}}"),
+              "runner_python": platform.python_version(),
+              "_the_runner_is_the_hardware": (
+                  "This block is the population every figure in the artifact belongs to. "
+                  "A GitHub Actions VM is container-grade CPU, which is what the roadmap "
+                  "asked for; it is NOT Railway, and no figure from this run may be "
+                  "quoted as a Railway measurement."
+              ),
+          }
+          with open("aligner/spike-e/out/ci/_host.json", "w", encoding="utf-8") as fh:
+              json.dump(facts, fh, indent=2)
+          print(json.dumps(facts, indent=2))
+          PY
+
+      # ── The four commands the artifact named ────────────────────────────────
+      # `date +%s%N` and integer arithmetic, deliberately, rather than `bc`:
+      # `bc` is not part of the declared contents of a runner image, and a
+      # measurement job that dies on an undeclared dependency is a measurement
+      # job that does not run.
+      - name: Build the runtime target (lean stack, no weights)
+        run: |
+          set -euo pipefail
+          start=$(date +%s%N)
+          DOCKER_BUILDKIT=1 docker build --target runtime -t audiomax-aligner:runtime aligner/
+          ms=$(( ( $(date +%s%N) - start ) / 1000000 ))
+          printf 'RUNTIME_BUILD_SECONDS=%d.%03d\n' $(( ms / 1000 )) $(( ms % 1000 )) >> "$GITHUB_ENV"
+
+      - name: Build the baked target (en/es/fr weights in the image)
+        run: |
+          set -euo pipefail
+          start=$(date +%s%N)
+          DOCKER_BUILDKIT=1 docker build --target baked -t audiomax-aligner:baked aligner/
+          ms=$(( ( $(date +%s%N) - start ) / 1000000 ))
+          printf 'BAKED_BUILD_SECONDS=%d.%03d\n' $(( ms / 1000 )) $(( ms % 1000 )) >> "$GITHUB_ENV"
+
+      - name: Inspect both images — this is the MEASURED size
+        # `estimated_image_size_mib` in `spike-e-results.json` is ESTIMATED: the
+        # wheel closure and the model weights were measured, the base layer was
+        # not, and the artifact says in terms that it "is NOT a substitute for
+        # `docker image inspect`". This is that substitute arriving.
+        run: |
+          set -euo pipefail
+          docker image inspect --format '{{.Size}}' audiomax-aligner:runtime audiomax-aligner:baked
+          python3 - <<'PY'
+          import json, os, subprocess, datetime
+
+          def out(*argv):
+              return subprocess.run(argv, capture_output=True, text=True, check=True).stdout.strip()
+
+          def size(tag):
+              return int(out("docker", "image", "inspect", "--format", "{{.Size}}", tag))
+
+          def digest(tag):
+              raw = out("docker", "image", "inspect", "--format", "{{index .RepoDigests 0}}", tag)
+              return raw or None
+
+          try:
+              base_digest = digest("python:3.12-slim")
+          except Exception:
+              base_digest = None
+
+          server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+          repo = os.environ.get("GITHUB_REPOSITORY", "")
+          run_id = os.environ.get("GITHUB_RUN_ID", "")
+          facts = {
+              "kind": "MEASURED",
+              "git_commit": os.environ.get("GITHUB_SHA"),
+              "workflow_run_url": f"{server}/{repo}/actions/runs/{run_id}" if repo and run_id else None,
+              "date_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+              "repro": "docker image inspect --format '{{.Size}}'",
+              "base_image": "python:3.12-slim",
+              "base_image_digest": base_digest,
+              "runtime_image_bytes": size("audiomax-aligner:runtime"),
+              "baked_image_bytes": size("audiomax-aligner:baked"),
+              "runtime_build_seconds": round(float(os.environ.get("RUNTIME_BUILD_SECONDS", 0)), 1),
+              "baked_build_seconds": round(float(os.environ.get("BAKED_BUILD_SECONDS", 0)), 1),
+              "_what_size_means_here": (
+                  "`.Size` is the uncompressed on-disk size of the image, which is what "
+                  "a node holds. A registry PULL transfers the compressed layers and is "
+                  "a smaller and different number."
+              ),
+              "skipped_runs": [],
+          }
+          with open("aligner/spike-e/out/ci/_build.json", "w", encoding="utf-8") as fh:
+              json.dump(facts, fh, indent=2)
+          print(json.dumps(facts, indent=2))
+          PY
+
+      - name: Probe — can the baked image load every model with NO network?
+        # `CLAUDE.md` constraint 2, no fallback launch: the `baked` target exists
+        # so that no render depends on reaching `download.pytorch.org`. This is
+        # the cheapest possible test of that — load the ASR model and all three
+        # alignment bundles with the network removed, and touch no audio.
+        #
+        # IT IS A PROBE AND NOT A GATE, deliberately. If it fails, the matrix
+        # still runs, with networking, and every run records `network: bridge`.
+        # A library that insists on a metadata request even when its cache is
+        # complete would otherwise take the whole measurement down with it — and
+        # the realtime factor is not the question this probe is asking. The
+        # failure is recorded as a FINDING, which is the useful outcome either
+        # way: it means the shipping configuration needs something the image
+        # does not yet carry.
+        run: |
+          set -uo pipefail
+          set +e
+          docker run --rm --network none audiomax-aligner:baked python -c "
+          from faster_whisper import WhisperModel
+          import torchaudio.pipelines as p
+          WhisperModel('base', device='cpu', compute_type='int8')
+          for n in ('WAV2VEC2_ASR_BASE_960H','VOXPOPULI_ASR_BASE_10K_ES','VOXPOPULI_ASR_BASE_10K_FR'):
+              getattr(p, n).get_model()
+          print('all models resident with no network')
+          " 2>&1 | tee /tmp/selfsufficiency.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "NETWORK_MODE=none" >> "$GITHUB_ENV"
+          else
+            echo "NETWORK_MODE=bridge" >> "$GITHUB_ENV"
+            echo "::warning::the baked image could not load its models offline (exit ${rc}); the matrix will run WITH networking and the artifact records this as a finding"
+          fi
+          RC="$rc" python3 - <<'PY'
+          import json, os
+          path = "aligner/spike-e/out/ci/_build.json"
+          with open(path, encoding="utf-8") as fh:
+              build = json.load(fh)
+          rc = int(os.environ["RC"])
+          tail = ""
+          try:
+              with open("/tmp/selfsufficiency.log", encoding="utf-8", errors="replace") as fh:
+                  tail = fh.read()[-1500:]
+          except OSError:
+              pass
+          build["self_sufficiency"] = {
+              "kind": "MEASURED",
+              "probe": "docker run --network none audiomax-aligner:baked — load the ASR model and all three alignment bundles",
+              "loads_all_models_offline": rc == 0,
+              "exit_code": rc,
+              "output_tail": tail,
+              "matrix_network_mode": "none" if rc == 0 else "bridge",
+              "_why_it_matters": (
+                  "CLAUDE.md constraint 2 forbids a primary path that depends on a "
+                  "fallback. A render that must reach download.pytorch.org before it "
+                  "can start has one. If this is false, the baked target does not yet "
+                  "deliver what it exists to deliver."
+              ),
+          }
+          with open(path, "w", encoding="utf-8") as fh:
+              json.dump(build, fh, indent=2)
+          print(json.dumps(build["self_sufficiency"], indent=2)[:800])
+          PY
+
+      - name: Measure — cold start first, then the matrix
+        # ORDER IS LOAD-BEARING. The cold-start run goes first and immediately
+        # after the page cache is dropped, so it reads its layers and its model
+        # weights from disk. Every later run is warm and says so, because a
+        # realtime factor measured while the kernel is still faulting in 1.3 GiB
+        # of weights is a measurement of the disk.
+        #
+        # NETWORKING is whatever the probe above established, and every run
+        # records which it got. When the probe passed — the expected case — the
+        # network is removed, so no run can quietly fetch a 360 MiB alignment
+        # bundle mid-measurement and charge the download to the realtime factor.
+        #
+        # `--memory-swap` equals `--memory` on purpose. Without it the container
+        # may swap past its memory limit, and a memory limit that can be
+        # exceeded by swapping is not a memory limit — the OOM test would pass
+        # by being slow instead of by fitting.
+        run: |
+          set -uo pipefail
+          mkdir -p aligner/spike-e/out/ci
+          chmod 777 aligner/spike-e/out/ci
+
+          NETWORK_MODE="${NETWORK_MODE:-none}"
+          NET_ARGS=""
+          if [ "$NETWORK_MODE" = "none" ]; then NET_ARGS="--network none"; fi
+          echo "network mode for every run: ${NETWORK_MODE}"
+
+          VCPUS=$(nproc)
+          MEM_TOTAL_MB=$(( $(grep MemTotal /proc/meminfo | awk '{print $2}') / 1024 ))
+          # Leave the host something to live in. A container limit above what the
+          # box has is not a limit, it is an invitation to swap the runner.
+          MEM_CEILING_MB=$(( MEM_TOTAL_MB - 1536 ))
+          echo "runner: ${VCPUS} vCPU, ${MEM_TOTAL_MB} MiB total, ceiling ${MEM_CEILING_MB} MiB"
+
+          # id | lang | cpus | align_chunk_s | memory_mb | page_cache | exact
+          # `exact=1` marks a run whose whole purpose is the SPECIFIC limit it
+          # names. Such a run is SKIPPED if the runner cannot honour that limit,
+          # never quietly run at a different one — a recommendation tested at a
+          # limit nobody recommended answers a question nobody asked.
+          RUNS=(
+            "en-c2-coldstart|en|2|0|${HEADROOM_MB}|cold|0"
+            "en-c2-oneshot-warm|en|2|0|${HEADROOM_MB}|warm|0"
+            "en-c2-chunk15-warm|en|2|15|${HEADROOM_MB}|warm|0"
+            "en-c2-oneshot-5g|en|2|0|${REC_UNCHUNKED_MB}|warm|1"
+            "en-c2-chunk15-2560m|en|2|15|${REC_CHUNKED_MB}|warm|1"
+            "en-c1-oneshot-warm|en|1|0|${HEADROOM_MB}|warm|0"
+            "en-c4-oneshot-warm|en|4|0|${HEADROOM_MB}|warm|0"
+            "es-c2-oneshot-warm|es|2|0|${HEADROOM_MB}|warm|0"
+            "fr-c2-oneshot-warm|fr|2|0|${HEADROOM_MB}|warm|0"
+          )
+
+          : > aligner/spike-e/out/ci/_skipped.jsonl
+
+          skip () {
+            printf '{"run_id":"%s","reason":"%s"}\n' "$1" "$2" \
+              >> aligner/spike-e/out/ci/_skipped.jsonl
+            echo "::notice::SKIPPED $1 — $2"
+          }
+
+          for spec in "${RUNS[@]}"; do
+            IFS='|' read -r id lang cpus chunk mem cache exact <<< "$spec"
+
+            if [ "$cpus" -gt "$VCPUS" ]; then
+              skip "$id" "requested --cpus ${cpus} on a ${VCPUS}-vCPU runner; a quota above the core count would be reported as a ${cpus}-vCPU figure it is not"
+              continue
+            fi
+            eff_mem="$mem"
+            if [ "$mem" -gt "$MEM_CEILING_MB" ]; then
+              if [ "$exact" = "1" ]; then
+                skip "$id" "this run tests the ${mem} MiB recommendation specifically and the runner ceiling is ${MEM_CEILING_MB} MiB"
+                continue
+              fi
+              eff_mem="$MEM_CEILING_MB"
+              echo "::notice::$id — memory limit clamped from ${mem} to ${eff_mem} MiB"
+            fi
+
+            if [ "$cache" = "cold" ]; then
+              # The drop is CHECKED. This step runs without `set -e`, so an
+              # unprivileged or refused drop would otherwise sail past and the
+              # run would be recorded as a cold-cache measurement while reading
+              # everything out of RAM — a warm number wearing a cold label,
+              # which is worse than no cold number at all.
+              echo "── dropping the page cache before $id"
+              sync
+              if sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'; then
+                echo "page cache dropped"
+              else
+                cache="cold-DROP-FAILED"
+                echo "::warning::could not drop the page cache before ${id}; it is recorded as cold-DROP-FAILED and is NOT a cold-start measurement"
+              fi
+            fi
+
+            RUN_ID="$id" LANG_CODE="$lang" CPUS="$cpus" CHUNK="$chunk" \
+            MEM_REQ="$mem" MEM_EFF="$eff_mem" CACHE="$cache" EXIT_CODE="" \
+            NETWORK_MODE="$NETWORK_MODE" \
+            python3 aligner/spike-e/write_run_meta.py
+
+            echo "── $id: lang=$lang cpus=$cpus chunk=${chunk}s mem=${eff_mem}m cache=$cache net=$NETWORK_MODE"
+            start=$(date +%s%N)
+            set +e
+            docker run --rm \
+              $NET_ARGS \
+              --cpus "$cpus" \
+              --memory "${eff_mem}m" --memory-swap "${eff_mem}m" \
+              -e OMP_NUM_THREADS="$cpus" \
+              -v "$PWD/aligner/spike-a/out:/audio:ro" \
+              -v "$PWD/aligner/spike-e/out/ci:/out" \
+              audiomax-aligner:baked \
+              python /app/spike-e/measure.py \
+                --audio "/audio/${lang}-para.wav" \
+                --lang "$lang" \
+                --threads "$cpus" \
+                --align-chunk-s "$chunk" \
+                --label "container-${id}" \
+                --out "/out/${id}.json"
+            rc=$?
+            set -e
+            ms=$(( ( $(date +%s%N) - start ) / 1000000 ))
+            wall=$(printf '%d.%03d' $(( ms / 1000 )) $(( ms % 1000 )))
+
+            if [ "$rc" -ne 0 ]; then
+              echo "::warning::$id exited ${rc}. 137 is the OOM killer, which is a RESULT about the limit and not a broken job."
+            fi
+
+            RUN_ID="$id" LANG_CODE="$lang" CPUS="$cpus" CHUNK="$chunk" \
+            MEM_REQ="$mem" MEM_EFF="$eff_mem" CACHE="$cache" EXIT_CODE="$rc" \
+            WALL_S="$wall" NETWORK_MODE="$NETWORK_MODE" \
+            python3 aligner/spike-e/write_run_meta.py
+          done
+
+          python3 - <<'PY'
+          import json
+          build = json.load(open("aligner/spike-e/out/ci/_build.json", encoding="utf-8"))
+          skipped = []
+          with open("aligner/spike-e/out/ci/_skipped.jsonl", encoding="utf-8") as fh:
+              for line in fh:
+                  line = line.strip()
+                  if line:
+                      skipped.append(json.loads(line))
+          build["skipped_runs"] = skipped
+          json.dump(build, open("aligner/spike-e/out/ci/_build.json", "w", encoding="utf-8"), indent=2)
+          print(f"{len(skipped)} run(s) skipped")
+          PY
+
+      - name: Assemble the artifact
+        if: always()
+        run: |
+          set -euo pipefail
+          python3 aligner/spike-e/ci_collect.py \
+            --runs-dir aligner/spike-e/out/ci \
+            --host-facts aligner/spike-e/out/ci/_host.json \
+            --build-facts aligner/spike-e/out/ci/_build.json \
+            --spike-e-results aligner/spike-e/out/spike-e-results.json \
+            --spike-a-results aligner/spike-a/out/spike-a-results.json \
+            --out aligner/spike-e/out/spike-e-container.json
+
+      # Uploaded BEFORE the verification gate, and `if: always()`, so a run that
+      # measured something and then failed its own check still hands over the
+      # evidence. Evidence that only survives a pass is evidence that cannot
+      # explain a failure.
+      - name: Upload the artifact and the raw runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spike-e-container
+          path: |
+            aligner/spike-e/out/spike-e-container.json
+            aligner/spike-e/out/ci/
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Verify — a green run that measured nothing is the defect
+        if: always()
+        run: python3 aligner/spike-e/ci_collect.py --verify aligner/spike-e/out/spike-e-container.json
+
+      - name: Say what still has to happen by hand
+        if: always()
+        run: |
+          {
+            echo "### SPIKE E — container measurement"
+            echo
+            echo "The artifact is uploaded as \`spike-e-container\`. **This job cannot commit it**:"
+            echo "\`permissions: contents: read\`, and \`CLAUDE.md\` requires a Jury gate before any"
+            echo "commit. Download it into \`aligner/spike-e/out/spike-e-container.json\` and commit"
+            echo "it under the gate."
+            echo
+            echo "Until that file is committed, the figures below are **not** measured in the sense"
+            echo "this project means: *a number is measured because a committed run emitted it*."
+          } >> "$GITHUB_STEP_SUMMARY"

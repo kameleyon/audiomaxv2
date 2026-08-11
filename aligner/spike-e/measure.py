@@ -30,9 +30,23 @@ spike between samples. On Windows it is `PeakWorkingSetSize` from
 the number that sizes a container memory limit; a sampled maximum is not, and
 would understate a short allocation burst.
 
+MEAN RSS is a SECOND and DIFFERENT number, added 2026-08-10, and the two must
+never be substituted for one another. The peak sizes a memory LIMIT. The mean is
+what a consumption-billed platform charges for — Railway bills $0.000231 per
+GB-minute of memory ACTUALLY USED — and the first version of this harness
+measured only the peak, which is why `spike-e-results.json` had to record
+`defect_2_memory_is_not_billed_at_all` as unquantified rather than answer it:
+*"Producing a mean needs a sampler this spike did not build."* This is that
+sampler. It samples the CURRENT resident set on a background thread and reports
+the mean twice — over the whole process, and over the steady state after the
+models are resident — because a long-lived worker spends its life in the second
+window and a per-job container pays the first. Neither is a duty cycle, and this
+harness still does not measure one.
+
 Usage:
   python measure.py --audio <wav> --lang en [--model base] [--threads 4]
                     [--out results.json] [--label host-windows]
+                    [--rss-sample-interval 0.25]
 """
 from __future__ import annotations
 
@@ -41,10 +55,72 @@ import json
 import os
 import platform
 import sys
+import threading
 import time
 import wave
 
 # ── Peak RSS, from the OS high-water mark ────────────────────────────────────
+
+
+def _windows_memory_counters():
+    """The raw PROCESS_MEMORY_COUNTERS struct, or None.
+
+    Peak and current both come from this one call, so they can never disagree
+    about which process they describe.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        # argtypes/restype are NOT optional here. GetCurrentProcess returns
+        # the pseudo-handle (HANDLE)-1; with ctypes' default int restype that
+        # value is truncated to 32 bits and the call fails, which is how this
+        # function silently returned None on its first outing.
+        kernel32 = ctypes.WinDLL("kernel32.dll")
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        psapi = ctypes.WinDLL("psapi.dll")
+        psapi.GetProcessMemoryInfo.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+            wintypes.DWORD,
+        ]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+        counters = PROCESS_MEMORY_COUNTERS()
+        counters.cb = ctypes.sizeof(counters)
+        ok = psapi.GetProcessMemoryInfo(
+            kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
+        )
+        return counters if ok else None
+    except Exception:
+        return None
+
+
+def _proc_status_kb(field: str) -> int | None:
+    """A `/proc/self/status` field in bytes, or None. Linux only."""
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith(field + ":"):
+                    # These fields are reported in kB.
+                    return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
 
 
 def peak_rss_bytes() -> int | None:
@@ -54,57 +130,140 @@ def peak_rss_bytes() -> int | None:
     degrades to a guess is exactly the failure this project keeps finding.
     """
     if sys.platform.startswith("linux"):
-        try:
-            with open("/proc/self/status", "r", encoding="utf-8") as fh:
-                for line in fh:
-                    if line.startswith("VmHWM:"):
-                        # VmHWM is reported in kB.
-                        return int(line.split()[1]) * 1024
-        except OSError:
-            return None
-        return None
+        return _proc_status_kb("VmHWM")
     if sys.platform == "win32":
-        try:
-            import ctypes
-            from ctypes import wintypes
-
-            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
-                _fields_ = [
-                    ("cb", wintypes.DWORD),
-                    ("PageFaultCount", wintypes.DWORD),
-                    ("PeakWorkingSetSize", ctypes.c_size_t),
-                    ("WorkingSetSize", ctypes.c_size_t),
-                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
-                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
-                    ("PagefileUsage", ctypes.c_size_t),
-                    ("PeakPagefileUsage", ctypes.c_size_t),
-                ]
-
-            # argtypes/restype are NOT optional here. GetCurrentProcess returns
-            # the pseudo-handle (HANDLE)-1; with ctypes' default int restype that
-            # value is truncated to 32 bits and the call fails, which is how this
-            # function silently returned None on its first outing.
-            kernel32 = ctypes.WinDLL("kernel32.dll")
-            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
-            psapi = ctypes.WinDLL("psapi.dll")
-            psapi.GetProcessMemoryInfo.argtypes = [
-                wintypes.HANDLE,
-                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
-                wintypes.DWORD,
-            ]
-            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
-
-            counters = PROCESS_MEMORY_COUNTERS()
-            counters.cb = ctypes.sizeof(counters)
-            ok = psapi.GetProcessMemoryInfo(
-                kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb
-            )
-            return int(counters.PeakWorkingSetSize) if ok else None
-        except Exception:
-            return None
+        counters = _windows_memory_counters()
+        return int(counters.PeakWorkingSetSize) if counters else None
     return None
+
+
+def current_rss_bytes() -> int | None:
+    """Resident set RIGHT NOW — the input to a MEAN, never to a limit.
+
+    `VmRSS` / `WorkingSetSize`, not the high-water marks above. Sampling this is
+    the only way to get the mean a consumption-billed platform charges for, and
+    a mean assembled from peaks would be a different and much larger number
+    wearing the same name.
+    """
+    if sys.platform.startswith("linux"):
+        return _proc_status_kb("VmRSS")
+    if sys.platform == "win32":
+        counters = _windows_memory_counters()
+        return int(counters.WorkingSetSize) if counters else None
+    return None
+
+
+class RssSampler:
+    """Background sampler for MEAN resident set.
+
+    Deliberately dumb: a daemon thread, one small file read per tick, samples
+    kept in memory as `(monotonic_seconds, bytes)`. At the default 0.25 s a
+    three-minute run costs ~700 tuples and a few hundred microseconds of CPU per
+    tick, which is inside the noise of a measurement whose subject peaks at
+    gigabytes.
+
+    It reports the mean over TWO windows, because they answer different
+    questions and one number cannot:
+
+      whole run          — what a PER-JOB container would be billed, since it
+                           pays the import and model-load ramp on every job.
+      after models load  — what a LONG-LIVED worker is billed, since it pays the
+                           ramp once and then lives in this window.
+
+    `spike-e-results.json` refuses per-job containers, so the second window is
+    the one the shipping architecture bills at. Both are emitted anyway: a
+    single number here would have to assert an architecture, and the artifact's
+    job is to measure, not to assume.
+
+    NEITHER IS A DUTY CYCLE. Billing is mean RSS multiplied by the time the
+    container EXISTS, and a worker that is idle between jobs still holds its
+    models resident and still pays. How much of the day that is has not been
+    measured anywhere in this project, so no dollar figure derived from these
+    means may be published without stating the duty cycle it assumed.
+    """
+
+    def __init__(self, interval_s: float) -> None:
+        self.interval_s = interval_s
+        self.samples: list[tuple[float, int]] = []
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self.unavailable = False
+
+    def start(self) -> None:
+        if self.interval_s <= 0:
+            return
+        if current_rss_bytes() is None:
+            # Refuse to start rather than accumulate an empty series that later
+            # reads as "sampled and flat".
+            self.unavailable = True
+            return
+        self._thread = threading.Thread(target=self._run, name="rss-sampler", daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            value = current_rss_bytes()
+            if value is not None:
+                self.samples.append((time.monotonic(), value))
+            self._stop.wait(self.interval_s)
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=self.interval_s * 4 + 1.0)
+
+    def summary(self, steady_state_from: float | None = None) -> dict:
+        """Mean/median/max over the whole series and over the steady state.
+
+        `steady_state_from` is a `time.monotonic()` stamp — in practice the
+        moment the last model finished loading.
+        """
+        if self.interval_s <= 0:
+            return {"rss_sampled": False, "_reason": "sampling disabled (--rss-sample-interval 0)"}
+        if self.unavailable:
+            return {
+                "rss_sampled": False,
+                "_reason": f"current RSS is not readable on {sys.platform}",
+            }
+        if not self.samples:
+            return {"rss_sampled": False, "_reason": "sampler produced no samples"}
+
+        def stats(rows: list[tuple[float, int]]) -> dict:
+            values = sorted(v for _, v in rows)
+            n = len(values)
+            mean = sum(values) / n
+            median = (
+                values[n // 2] if n % 2 else (values[n // 2 - 1] + values[n // 2]) / 2.0
+            )
+            return {
+                "n": n,
+                "mean_bytes": int(mean),
+                "mean_mib": round(mean / (1024 * 1024), 1),
+                "median_bytes": int(median),
+                "max_bytes": values[-1],
+                "span_s": round(rows[-1][0] - rows[0][0], 3),
+            }
+
+        out: dict = {
+            "rss_sampled": True,
+            "_kind": "MEASURED",
+            "sample_interval_s": self.interval_s,
+            "whole_run": stats(self.samples),
+            "_what_these_are": (
+                "MEAN resident set, the billing basis. NOT the peak, which sizes the "
+                "memory limit and is reported separately as peak_rss_max_bytes. "
+                "Multiplying either by a price needs a DUTY CYCLE, which this harness "
+                "does not measure."
+            ),
+        }
+        if steady_state_from is not None:
+            rows = [r for r in self.samples if r[0] >= steady_state_from]
+            out["after_models_loaded"] = (
+                stats(rows)
+                if rows
+                else {"n": 0, "_reason": "no sample fell after the model-load boundary"}
+            )
+        return out
 
 
 def wav_seconds(path: str) -> float:
@@ -186,6 +345,16 @@ def main() -> int:
         help="seconds per alignment forward pass; 0 = one shot over the segment",
     )
     ap.add_argument(
+        "--rss-sample-interval",
+        type=float,
+        default=0.25,
+        help=(
+            "seconds between MEAN-RSS samples; 0 disables sampling. The mean is the "
+            "memory BILLING basis and is a different quantity from the peak, which "
+            "sizes the limit. Both are emitted."
+        ),
+    )
+    ap.add_argument(
         "--align-backend",
         choices=("torchaudio", "whisperx"),
         default="torchaudio",
@@ -213,6 +382,12 @@ def main() -> int:
 
     audio_s = wav_seconds(args.audio)
     rec["audio_seconds"] = round(audio_s, 2)
+
+    # Started before the first import, so the ramp a per-job container pays is
+    # inside the series rather than assumed away.
+    sampler = RssSampler(args.rss_sample_interval)
+    sampler.start()
+    models_resident_at: float | None = None
 
     rec["peak_rss_after_stage_bytes"]["baseline_interpreter"] = peak_rss_bytes()
 
@@ -242,6 +417,9 @@ def main() -> int:
     )
     rec["stages"]["asr_model_load_s"] = round(time.time() - t0, 3)
     rec["peak_rss_after_stage_bytes"]["asr_model_load"] = peak_rss_bytes()
+    # Provisional steady-state boundary: correct when --skip-align is passed, and
+    # moved forward below once the alignment bundle is also resident.
+    models_resident_at = time.monotonic()
 
     # 3. transcribe — the per-unit-of-work term
     t0, c0 = time.time(), time.process_time()
@@ -277,6 +455,7 @@ def main() -> int:
                 align_load = time.time() - t0
                 rec["stages"]["align_model_load_s"] = round(align_load, 3)
                 rec["peak_rss_after_stage_bytes"]["align_model_load"] = peak_rss_bytes()
+                models_resident_at = time.monotonic()
 
                 audio = whisperx.load_audio(args.audio)
                 segs_in = [
@@ -319,6 +498,7 @@ def main() -> int:
                 align_load = time.time() - t0
                 rec["stages"]["align_model_load_s"] = round(align_load, 3)
                 rec["peak_rss_after_stage_bytes"]["align_model_load"] = peak_rss_bytes()
+                models_resident_at = time.monotonic()
 
                 waveform, sample_rate = torchaudio.load(args.audio)
                 if sample_rate != bundle.sample_rate:
@@ -374,6 +554,9 @@ def main() -> int:
             )
 
     # ── Derived. Every derived field names its inputs. ───────────────────────
+    sampler.stop()
+    rec["rss_mean"] = sampler.summary(steady_state_from=models_resident_at)
+
     total_wall = transcribe_wall + (align_wall or 0.0)
     total_cpu = transcribe_cpu + (align_cpu or 0.0)
     cold = rec["stages"].get("asr_model_load_s", 0.0) + (align_load or 0.0)

@@ -41,6 +41,21 @@
     "why_not_fixed_here": "HypervisorPlatform is Disabled and this machine is ALREADY a guest (HypervisorPresent=true, AMD EPYC). Enabling it requires a reboot, AND the cloud provider must expose nested virtualisation on this VM — which HCS_E_HYPERV_NOT_INSTALLED indicates it does not. Four other agents were mid-task on this host; rebooting to finish a sizing spike is not a trade this spike gets to make unilaterally.",
     "what_would_be_needed": {
       "simplest": "any linux/amd64 Docker daemon — a GitHub Actions ubuntu-latest job is sufficient and free",
+      "_now_implemented_as": {
+        "kind": "ROUTE WRITTEN — NOT RUN. This is not a measurement and does not change a single figure in this file.",
+        "workflow": ".github/workflows/spike-e-container.yml",
+        "collector": "aligner/spike-e/ci_collect.py",
+        "artifact_it_will_emit": "aligner/spike-e/out/spike-e-container.json",
+        "runner": "ubuntu-24.04, pinned rather than ubuntu-latest — the runner is this measurement's hardware and a moving alias is a hardware change nobody sees",
+        "commands_it_runs": "the four below, plus a scaling curve across CPU quotas, a cold-page-cache run, and both recommended memory limits",
+        "_the_refusal_is_discharged_not_undone": "Every figure in THIS file still describes the Windows workstation, and `answer_4_realtime_factor.container_value` is still `null`. Writing the job does not measure anything: a number is measured when a committed run emits it. Until `spike-e-container.json` exists in the repository, the container column of this spike is exactly as empty as it was.",
+        "_what_cannot_be_verified_from_this_host": [
+          "that the image builds at all — the lean stack's linux/amd64 resolution is measured, but no build has ever executed",
+          "that `whisperx`'s `transformers>=4.48,<5` pin resolves — the `whisperx` target is NOT in the job, so that pin stays unverified even after the job runs",
+          "the runner's CPU model, core count and memory, all of which bound which matrix rows can honestly run",
+          "whether the recommended 5 GiB unchunked limit survives a real one-shot alignment"
+        ]
+      },
       "commands": [
         "docker build --target runtime -t audiomax-aligner:runtime aligner/",
         "docker build --target baked   -t audiomax-aligner:baked   aligner/",
@@ -229,6 +244,13 @@
     "container_value": null,
     "reason": "no Linux container can run on this host — see container_measurement_blocked",
     "_no_substitute_offered": "The workstation figures below are NOT a stand-in for the container answer and must not be quoted as one. They are recorded because the CONTENTION IS ITSELF MEASURED, which is what makes them interpretable at all.",
+    "container_value_route": {
+      "kind": "ROUTE WRITTEN — NOT RUN",
+      "will_be_emitted_at": "aligner/spike-e/out/spike-e-container.json → answer_4_realtime_factor.container_value",
+      "by": ".github/workflows/spike-e-container.yml",
+      "guarded_by": "aligner/spike-e/ci_collect.py --verify, which exits non-zero if that key is null, if any of the three required runs is missing, if either image size is zero, if the cold-cache run produced nothing, or if ANY block holding a number lacks a MEASURED / ESTIMATED / ASSUMPTION label",
+      "_this_key_stays_null": "It is null until a committed run emits the container figure. A route is not a measurement, and the point of this key was never that it was hard to fill in — it was that filling it in without a container would have been a fabrication."
+    },
     "workstation_runs": [
       {
         "label": "host-windows-QUIETER",
@@ -424,7 +446,8 @@
         "source": "https://docs.railway.com/reference/pricing, fetched 2026-08-10"
       },
       "cpu_rate_now_vendor_confirmed": "SPIKE A's $0.000463/vCPU-minute ASSUMPTION MATCHES the vendor's published rate. That upgrades it from unverified to vendor-confirmed. It does NOT discharge the artifact's own instruction to re-derive against an invoice: published and billed rates differ by plan and commitment, and the artifact asked for the invoice specifically.",
-      "why_not_quantified_here": "Billing is on consumption over time, so the needed input is MEAN RSS over the run. This harness measures the PEAK — the right number for a memory LIMIT and the wrong one for a bill. Producing a mean needs a sampler this spike did not build. Quoting a cost from a peak would overstate it, and inventing a mean is the failure this spike exists to avoid.",
+      "why_not_quantified_here": "Billing is on consumption over time, so the needed input is MEAN RSS over the run. This harness measures the PEAK — the right number for a memory LIMIT and the wrong one for a bill. Quoting a cost from a peak would overstate it, and inventing a mean is the failure this spike exists to avoid.",
+      "_the_sampler_now_exists_and_has_still_measured_nothing": "CORRECTED 2026-08-10. This entry read 'Producing a mean needs a sampler this spike did not build.' `measure.py` now carries one (`--rss-sample-interval`, default 0.25 s, emitting `rss_mean.whole_run` and `rss_mean.after_models_loaded`), and `ci_collect.py` derives the memory term from the steady-state mean. NONE OF THE RUNS IN THIS FILE USED IT — they predate it — so this defect stays open here, and it closes in `spike-e-container.json` or nowhere. The two means are reported separately because a per-job container pays the import-and-load ramp on every job and a long-lived worker pays it once; a single mean would have to assert an architecture. A bill also needs a DUTY CYCLE, which nothing in this project measures, so even the container figure will be a floor.",
       "order_of_magnitude_illustration_NOT_a_result": "at 1 GiB mean over the container time a 9-hour book implies, $0.01386/GiB-hour adds a few cents per book — i.e. the same order as the entire published compute figure. That is the reason it cannot stay omitted."
     },
     "defect_3_headline_realtime_factor_is_unsourced": {
@@ -841,14 +864,89 @@
     "Cold start was measured with a warm page cache and warm model files, so it is a floor.",
     "Peak RSS is a per-PROCESS high-water mark. A container running several worker processes multiplies it.",
     "The 60 s unit of work was approximated with 73-77 s fixtures, the closest on disk. Alignment memory is quadratic in segment length, so a true 60 s segment peaks somewhat lower.",
-    "The pipeline multiplier rests on a SINGLE cleanest observation (en, thread efficiency 0.662). It is the best available, not a converged estimate, and it should be re-measured in a container before it is quoted in a decision — the same instruction SPIKE A attached to its own rate basis."
+    "The pipeline multiplier rests on a SINGLE cleanest observation (en, thread efficiency 0.662). It is the best available, not a converged estimate, and it should be re-measured in a container before it is quoted in a decision — the same instruction SPIKE A attached to its own rate basis.",
+    "Every run in this file predates the mean-RSS sampler, so every `rss_mean` block is ABSENT here rather than empty. The memory bill is unquantified in this artifact and stays that way; it is answered, if at all, in `spike-e-container.json`.",
+    "A CI job that closes the container column now EXISTS (`.github/workflows/spike-e-container.yml`) and HAS NOT RUN. Nothing in this file changed because of it. The job needs a push and a runner, neither of which this host can supply, and the artifact it will emit must be committed under the Jury gate before any figure from it may be quoted."
   ],
-  "_cross_scope_needs": [
-    "Forge (worker/src/): the aligner must be a long-lived, model-resident worker, not a per-job container. Cold start is ~17 s warm, per language, and is a floor.",
-    "Forge: decide whether the match step tolerates a seam every N seconds. If it does, chunked alignment cuts the container memory requirement from ~5 GiB to ~2.5 GiB — a 2x difference in how many workers fit per node. This spike measures the trade; it does not own the call.",
-    "Forge / whoever owns aligner/spike-a/: compute_cost_per_audio_hour_usd should either be RENAMED to say it is ASR-only, or extended to time the alignment stage. Today the name claims the pipeline and the code times one third of it. I did not edit spike-a — out of scope.",
-    "Scribe: the roadmap's SPIKE A item 3 pairs '0.162x realtime' with '$0.165-$0.224'. No run produces that pair; 0.162 appears in no artifact. Documents are out of my scope; the correction is in answer_5_cost_figure.defect_3.",
-    "Whoever owns CI (.github/): the only way to finish this spike is a linux/amd64 Docker daemon. A GitHub Actions ubuntu-latest job running the commands in container_measurement_blocked.what_would_be_needed closes it. I did not touch .github/ — out of scope.",
-    "Ledger / whoever owns the unit-cost model: this artifact's dollars are SELF-HOSTED COMPUTE. Oracle's $8.10-$8.33 is TTS VENDOR SPEND. They are additive terms in the per-book unit cost, not alternatives."
-  ]
+  "_cross_scope_needs": {
+    "_swept": "2026-08-10, by Queue, under CLAUDE.md's second-sweep rule 5 and Jury finding J32-M5.",
+    "_why_this_block_changed_shape": "It was a list of six free-text sentences. One of them — the request to Scribe about the '0.162x realtime' pairing — asked a peer to fix something THE SAME COMMIT HAD ALREADY FIXED, and shipped anyway. A prose request has no status field, so nothing about it can go stale visibly; it just quietly stops being true. Every entry now carries a status, the place the request was routed to, and, if it is still open, an owner and a date. An entry with neither a discharge nor a date is now a malformed entry rather than a sentence somebody has to re-read.",
+    "_the_rule": "Before the gate, every entry is either DISCHARGED — routed into a binding document, and deleted here — or OPEN with a named owner and a date. Silence is not a third option.",
+    "entries": [
+      {
+        "id": "XS-1",
+        "to": "Forge (worker/src/)",
+        "need": "the aligner must be a long-lived, model-resident worker, not a per-job container; cold start is ~17 s warm, per language, and is a floor",
+        "status": "DISCHARGED — routed",
+        "where": "resources/roadmap, Phase 7, first item: \"The aligner is a LONG-LIVED, MODEL-RESIDENT worker. Per-job containers are refused, and scale-to-zero is a false economy\"",
+        "owner_and_date_in_that_document": "Queue with Forge · due 2026-08-18",
+        "_note": "The work is open; the REQUEST is discharged, because it now lives in the document that gets built rather than in a comment inside a measurement. The container run will re-test the 17 s floor from a cold page cache; if it collapses, that roadmap item is re-opened rather than quietly kept."
+      },
+      {
+        "id": "XS-2",
+        "to": "Forge",
+        "need": "decide whether the match step tolerates a seam every N seconds — chunked alignment is a 2x container-memory decision (~5 GiB vs ~2.5 GiB) and this spike measured both sides without making the call",
+        "status": "DISCHARGED — routed",
+        "where": "resources/roadmap, Phase 7: \"DECIDE: chunked alignment or not — it is a 2x memory decision and it is Forge's call, not Queue's\"",
+        "owner_and_date_in_that_document": "Forge · due 2026-08-18",
+        "_note": "The CI job runs BOTH sides at both recommended limits, so when Forge decides, the memory figure under the decision is a container figure rather than a workstation one."
+      },
+      {
+        "id": "XS-3",
+        "to": "Forge (tools/) and whoever owns aligner/spike-a/",
+        "need": "compute_cost_per_audio_hour_usd names a pipeline and times one stage of three. Rename it to say ASR-only, or extend it to time alignment.",
+        "status": "OPEN",
+        "owner": "Forge",
+        "due": "2026-08-13",
+        "where": "resources/roadmap, Phase 0 SPIKE A item 3: \"[COST] needs a second term and a metric label; tools/ is Forge's and this is referred, not edited\"",
+        "partially_done": "The LABELLING is discharged — every document that quotes the figure now says ASR-only, and CLAUDE.md pins the key by name. The RENAME-OR-EXTEND is not, and it is the half that stops the next reader re-making the mistake.",
+        "_why_queue_did_not_do_it": "aligner/spike-a/ and tools/ are both outside this scope, and were being written by another agent in the same round."
+      },
+      {
+        "id": "XS-4",
+        "to": "Scribe",
+        "need": "the roadmap paired '0.162x realtime' with '$0.165-$0.224'; no run produces that pair",
+        "status": "DISCHARGED — FIXED, and this entry should never have shipped",
+        "where": "resources/roadmap Phase 0 SPIKE A item 3 (\"CORRECTED 2026-08-10 by SPIKE E (Queue)\" and item 3's point 3, \"'0.162x realtime' appears in NO artifact\"), and README.md's accuracy cell",
+        "_this_is_J32_M5": "The same commit that carried this request had already made the correction in all three places. A stale peer-scope request inside an artifact is the same defect class as a stale figure: it survives every check that looks at numbers, because it is a sentence about somebody else's work. It is deleted as a request and kept here only as the reason this block now has a status field."
+      },
+      {
+        "id": "XS-5",
+        "to": "whoever owns CI (.github/)",
+        "need": "a linux/amd64 Docker daemon is the only way to finish this spike; a GitHub Actions job running the commands in container_measurement_blocked.what_would_be_needed closes it",
+        "status": "DISCHARGED — built, by Queue, 2026-08-10",
+        "where": ".github/workflows/spike-e-container.yml, with aligner/spike-e/ci_collect.py and aligner/spike-e/write_run_meta.py",
+        "_what_is_NOT_discharged": "The job has never run. It needs a push and a runner, and this host can supply neither. Writing it measures nothing, and no figure in this file moved. Tracked as its own roadmap item — see the OPEN entry XS-7 below, which is the request BACK to the roadmap's owner."
+      },
+      {
+        "id": "XS-6",
+        "to": "Ledger / whoever writes the unit-cost model",
+        "need": "this artifact's dollars are SELF-HOSTED COMPUTE; Oracle's $8.10-$8.33 is TTS VENDOR SPEND; they are additive terms in the per-book unit cost, not alternatives",
+        "status": "DISCHARGED — routed",
+        "where": "resources/roadmap, the round summary: \"Three per-book dollar figures now exist and they are NOT alternatives … whoever writes the unit-cost model writes the label with the number\"",
+        "owner_and_date_in_that_document": "none, and correctly so — no unit-cost model exists yet, so there is nobody to own it. The instruction is attached to the act of writing one.",
+        "_note": "This is the one entry with no date that is not defective. A date on work nobody has started and nobody owns is a date that goes overdue and teaches people to ignore dates."
+      },
+      {
+        "id": "XS-7",
+        "to": "whoever owns resources/roadmap (Scribe, with the orchestrator)",
+        "need": "roadmap Phase 0's item \"Finish SPIKE E on a Linux container — the only way to close it\" says the four commands live in this artifact and that a GitHub Actions job is sufficient. Both are still true, and the item now has a concrete route: .github/workflows/spike-e-container.yml. The item must NOT be checked off — the job has not run — but it should name the workflow so the next reader does not write a second one.",
+        "status": "OPEN",
+        "owner": "Scribe",
+        "due": "2026-08-14",
+        "_raised_in_the_same_direction_the_sweep_missed_last_time": "J32-M4 was a peer's named request left undone; J32-M5 was a request already done. This entry is the first kind, raised deliberately: Queue cannot edit the roadmap, so if this is not written down as a request with an owner and a date, the roadmap keeps describing a route that exists as though it does not — which is exactly the shape 'a roadmap item declaring a CI job absent that a peer was building' took in round 31.",
+        "_do_not_close_the_item": "Until spike-e-container.json is committed, no container-grade realtime factor exists and none may be quoted. That sentence in the roadmap stays true and stays there."
+      },
+      {
+        "id": "XS-8",
+        "to": "Forge (tools/doc-check.mjs)",
+        "need": "decide whether the container artifact's figures belong under a doc-check guard. Today ARTIFACT_DIR is `aligner/spike-a/out`, so [ART-FIGURE] and [ART-METRIC] cannot see aligner/spike-e/out at all — every SPIKE E figure quoted in prose, including the $0.32-$0.43 range and the 1.916 multiplier, is guarded by nothing.",
+        "status": "OPEN",
+        "owner": "Forge",
+        "due": "2026-08-14",
+        "_why_this_is_raised_now": "CLAUDE.md requires that a published figure's key be added to [ART-FIGURE]'s TRACKED in the same commit, and abstain rather than go silent when it is not. SPIKE E's keys cannot be added, because the guard's directory scope excludes them — so the requirement is unsatisfiable rather than unmet, and that is a property of the tool, not of this artifact. tools/ is Forge's and was being edited in the same round; this is referred, not edited.",
+        "_interim": "ci_collect.py --verify enforces the label discipline WITHIN the container artifact — no block holding a number may lack a MEASURED / ESTIMATED / ASSUMPTION label. That guards the artifact. It does not guard the prose."
+      }
+    ]
+  }
 }

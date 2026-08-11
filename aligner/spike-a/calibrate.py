@@ -19,9 +19,13 @@ import reference as R, measure as M, harness as H
 
 ROOT = pathlib.Path(__file__).parent; OUT = ROOT / "out"
 FX = json.loads((ROOT / "fixtures.json").read_text(encoding="utf-8"))
-E = R.env()
 
-def pairs_for(wav, lang, text):
+# NOTHING AT IMPORT TIME SPENDS MONEY. `E = R.env()` and the whole fit/score loop
+# used to run at module scope, so `import calibrate` made a paid Lemonfox ASR
+# call per fixture. See the same note in `fa.py`: a module that spends on import
+# cannot obey the owner's one-call rule, and the importer cannot see that it will.
+
+def pairs_for(wav, lang, text, E):
     """
     H26-M8. Both streams are mapped onto the DISPLAY TEXT and paired by display
     index. The previous surface-form uniqueness filter is what a calibration fit
@@ -47,45 +51,52 @@ def score(pairs, shift, scale=1.0):
         ov.append(100.0 * inter / union if union > 0 else 0.0)
     return statistics.median(ov), 100.0 * sum(1 for o in ov if o >= 50) / len(ov)
 
-cal = {}
-print("FIT on fixtures.languages")
-for lang in FX["languages"]:
-    p = pairs_for(OUT / f"{lang}.wav", lang, FX["languages"][lang]["text"])
-    # Grid search shift and a duration scale -- whisper words also run ~0.85x short.
-    best = max(((sh, sc) + score(p, sh, sc) for sh in [i / 1000 for i in range(0, 261, 10)]
-                for sc in [x / 100 for x in range(90, 156, 5)]), key=lambda t: (t[3], t[2]))
-    cal[lang] = {"shift_ms": round(best[0] * 1000), "duration_scale": best[1]}
-    print(f"  {lang}: shift {best[0]*1000:+.0f}ms  scale {best[1]:.2f}x  -> fit {best[3]:.0f}% (median {best[2]:.0f}%)")
+def main() -> int:
+    E = R.env()
+    cal = {}
+    print("FIT on fixtures.languages")
+    for lang in FX["languages"]:
+        p = pairs_for(OUT / f"{lang}.wav", lang, FX["languages"][lang]["text"], E)
+        # Grid search shift and a duration scale -- whisper words also run ~0.85x short.
+        best = max(((sh, sc) + score(p, sh, sc) for sh in [i / 1000 for i in range(0, 261, 10)]
+                    for sc in [x / 100 for x in range(90, 156, 5)]), key=lambda t: (t[3], t[2]))
+        cal[lang] = {"shift_ms": round(best[0] * 1000), "duration_scale": best[1]}
+        print(f"  {lang}: shift {best[0]*1000:+.0f}ms  scale {best[1]:.2f}x  -> fit {best[3]:.0f}% (median {best[2]:.0f}%)")
 
-print("\nSCORE on fixtures.holdout -- audio the calibration never saw")
-res = []
-for lang in FX["holdout"]:
-    wav = OUT / f"{lang}-holdout.wav"
-    if not wav.exists(): continue
-    p = pairs_for(wav, lang, FX["holdout"][lang]["text"])
-    m0, k0 = score(p, 0.0, 1.0)
-    m1, k1 = score(p, cal[lang]["shift_ms"] / 1000, cal[lang]["duration_scale"])
-    flag = "PASS" if k1 >= 95 else "BELOW BAR"
-    # H26-M5 -- THE HOLDOUT CONFOUNDS THE VARIABLE IT EXISTS TO CONTROL when the
-    # voice differs between fit and score. A holdout is meant to vary the TEXT
-    # and hold everything else fixed; if the voice also changes, a drop in the
-    # score cannot be attributed to generalisation failure rather than to the
-    # voice -- and fixtures.json:19 already records a 12-point swing from voice
-    # alone. Recorded per row so the reader is not left to notice it.
-    fit_voice = FX["languages"][lang].get("voice")
-    holdout_voice = FX["holdout"][lang].get("voice")
-    print(f"  {lang} [{flag}] {len(p)}w  uncalibrated {k0:.0f}%  ->  calibrated {k1:.0f}%  (median overlap {m1:.0f}%)"
-          + ("" if fit_voice == holdout_voice else f"   CONFOUNDED: fit on {fit_voice}, scored on {holdout_voice}"))
-    res.append({"lang": lang, **cal[lang], "holdout_words": len(p),
-                "uncalibrated_pct": round(k0, 1), "calibrated_pct": round(k1, 1),
-                "median_overlap_pct": round(m1, 1), "passes_95_bar": bool(k1 >= 95),
-                "fit_voice": fit_voice, "holdout_voice": holdout_voice,
-                "voice_confounded": fit_voice != holdout_voice,
-                "_confound_note": ("H26-M5. When fit_voice != holdout_voice the holdout varies TWO "
-                                   "things at once, so it cannot separate 'the offset did not "
-                                   "generalise to new text' from 'the offset did not generalise to "
-                                   "this voice'. Voice is a measured word-sync variable "
-                                   "(fixtures.json:19, a 12-point swing). This row is not evidence "
-                                   "of generalisation.")})
-H.write_json(OUT / "spike-a-calibration.json", {"calibration": cal, "holdout": res})
-print("\nwrote out/spike-a-calibration.json")
+    print("\nSCORE on fixtures.holdout -- audio the calibration never saw")
+    res = []
+    for lang in FX["holdout"]:
+        wav = OUT / f"{lang}-holdout.wav"
+        if not wav.exists(): continue
+        p = pairs_for(wav, lang, FX["holdout"][lang]["text"], E)
+        m0, k0 = score(p, 0.0, 1.0)
+        m1, k1 = score(p, cal[lang]["shift_ms"] / 1000, cal[lang]["duration_scale"])
+        flag = "PASS" if k1 >= 95 else "BELOW BAR"
+        # H26-M5 -- THE HOLDOUT CONFOUNDS THE VARIABLE IT EXISTS TO CONTROL when the
+        # voice differs between fit and score. A holdout is meant to vary the TEXT
+        # and hold everything else fixed; if the voice also changes, a drop in the
+        # score cannot be attributed to generalisation failure rather than to the
+        # voice -- and fixtures.json:19 already records a 12-point swing from voice
+        # alone. Recorded per row so the reader is not left to notice it.
+        fit_voice = FX["languages"][lang].get("voice")
+        holdout_voice = FX["holdout"][lang].get("voice")
+        print(f"  {lang} [{flag}] {len(p)}w  uncalibrated {k0:.0f}%  ->  calibrated {k1:.0f}%  (median overlap {m1:.0f}%)"
+              + ("" if fit_voice == holdout_voice else f"   CONFOUNDED: fit on {fit_voice}, scored on {holdout_voice}"))
+        res.append({"lang": lang, **cal[lang], "holdout_words": len(p),
+                    "uncalibrated_pct": round(k0, 1), "calibrated_pct": round(k1, 1),
+                    "median_overlap_pct": round(m1, 1), "passes_95_bar": bool(k1 >= 95),
+                    "fit_voice": fit_voice, "holdout_voice": holdout_voice,
+                    "voice_confounded": fit_voice != holdout_voice,
+                    "_confound_note": ("H26-M5. When fit_voice != holdout_voice the holdout varies TWO "
+                                       "things at once, so it cannot separate 'the offset did not "
+                                       "generalise to new text' from 'the offset did not generalise to "
+                                       "this voice'. Voice is a measured word-sync variable "
+                                       "(fixtures.json:19, a 12-point swing). This row is not evidence "
+                                       "of generalisation.")})
+    H.write_json(OUT / "spike-a-calibration.json", {"calibration": cal, "holdout": res})
+    print("\nwrote out/spike-a-calibration.json")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

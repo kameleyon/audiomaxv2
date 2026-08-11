@@ -99,9 +99,23 @@ quality signals.
 **It re-synchronises, forward only** — trigger 3 consecutive unmatched tokens,
 anchor 3 consecutive matches, bounded at 200. Without that path a single
 mismatch cost the *rest of the clip*: monotonic greedy with a six-token
-lookahead desynced **3 of 6** long clips. Backward re-sync is refused — a
+lookahead desynced **3 of the 6 long FRENCH clips** (`J33-M4` / `H34-m3` — this
+read *"3 of 6 long clips"* with no language on it until 2026-08-11, and every
+clip underneath it is `fr`; `spike-a-voices.json`'s `clips[].lang_code` is `fr`
+in all nine rows. The English chapter clip never desynced and never re-synced —
+`clips[].resyncs` is **0**). Backward re-sync is refused — a
 highlight moving backwards through the page is worse than a missing one, and it
-breaks monotonicity. Diacritic and elision folds are **ranked strictly below the
+breaks monotonicity.
+
+**And the re-sync has a user cost that the design owes a disclosure.** Every
+display word the cursor jumps over receives **no timestamp and therefore no
+highlight** — `worker/src/match/match.ts` returns the count as
+**`skipped_display_tokens`**, measured at **25** on `fr-long-narrateur-r1` (2
+re-syncs) and **9** on `fr-long-feminine-r2` (1). Audio continues; the highlight
+stops for a paragraph and reappears further down. It is recorded as
+`align_reason` **`incomplete_match`** with a positional `align_gaps` row, and it
+needs a spoken string and a live region, because WCAG 2.2 SC 4.1.3 requires a
+programmatic equivalent of that state change. Diacritic and elision folds are **ranked strictly below the
 exact fold**, so a loose fold can never steal a token that had an exact match
 available.
 
@@ -235,9 +249,23 @@ that. Neither ever falls back to estimated timings. *Owner: §6.3.*
 French voice raises `voice_substituted` **and** `low_confidence` simultaneously,
 and a single-valued field announces half the truth. It is a stable, translatable
 enum, because a client cannot announce a state change it has no string for.
-Reachable values: `unsupported_language`, `low_confidence`, `engine_error`,
-`transcript_mismatch`, `no_transcriber`, `transcription_unreliable`,
-`wrong_match`, `voice_substituted`, `excessive_drop`. *Owner: §6.3.*
+Reachable values — **ten** since 2026-08-11: `unsupported_language`,
+`low_confidence`, `engine_error`, `transcript_mismatch`, `no_transcriber`,
+`transcription_unreliable`, `wrong_match`, `voice_substituted`,
+`excessive_drop`, **`incomplete_match`**. *Owner: §6.3.*
+
+**`incomplete_match`** (`H34-C2`) — *the match ran correctly and left part of the
+segment unconnected.* One cause covering **both** halves of the match step's
+residue: a **display** word the bounded forward re-sync jumped over (it has
+character offsets and **no** timestamp, so it is never highlighted — the
+producer is `worker/src/match/match.ts`'s **`skipped_display_tokens`**, measured
+at 25 and 9 on two French long clips), and an **observed** word that matched no
+display text (it has a timestamp and **no** character offsets). *Which* half and
+*where* is recorded positionally by `align_gap_reason` — `resync_skipped` /
+`unmatched_observation` — exactly as `excessive_drop` is the segment-level cause
+whose positional detail is `dropped_marker`. **It is not `wrong_match`:** a
+bounded re-sync is the design working as specified; `wrong_match` means the
+invariants were violated.
 
 ### `align_permanence`
 **Derived from the reason set, never authored.** If any reason is `permanent` the
@@ -245,10 +273,25 @@ result is `permanent`; else if any is `render_specific`, `render_specific`; else
 `retryable`.
 
 - **`permanent`** — *"Word sync isn't available for this voice."*
-- **`render_specific`** — a **different voice** genuinely can fix it. This is the
+- **`render_specific`** — a **different RENDER** genuinely can fix it. This is the
   field that surfaces the remedy, so misclassifying something as `permanent`
   withdraws the feature *and* hides the fix.
-- **`retryable`** — try again, same voice.
+- **`retryable`** — try again, same voice, at no cost.
+
+**`render_specific` means a different RENDER, and for one value that is NOT the
+same as a different voice** *(corrected 2026-08-11, `H34-C2`)*. This entry said
+*"a different voice"* flatly, and for `voice_substituted`, `low_confidence`,
+`transcription_unreliable` and `wrong_match` that remains the right reading.
+**For `incomplete_match` it is not, and the evidence says so:** the two clips
+that skipped display words are **replicates of the same voice on the same
+reference text** — `narrateur-r1` fires 2 re-syncs skipping 25 tokens where
+`narrateur-r2` fires 0. The contrast is between **renders**, not voices. That
+makes the classification *stronger* — even the same voice re-rendered changes it
+— and it makes one thing forbidden: **the user-facing string for
+`incomplete_match` must offer a RE-RENDER and must not promise that another
+voice fixes it.** No committed run compares re-sync counts across voices, and
+offering a blind user a remedy nobody has measured is the defect, not the
+caution.
 
 It exists as a column so that no client has to hardcode which reasons are
 terminal. *Owner: §6.3.*
@@ -449,7 +492,20 @@ bar), `hallucination_rate`, and compute cost per audio-hour. Proposed bar:
 `matched_within_drift_pct >= 95` and `p95_abs_error_ms <= 300`, confirmable or
 movable **by** the measurement and not after it. *(Owner: Forge · due
 2026-08-14.)* Until it returns, `transcription_unreliable` has no producer rule
-and word-sync quality is **measured and below bar** for `en`/`es`/`fr` (SPIKE A).
+and word-sync quality is **measured and below bar for `en` and `fr`, and NOT
+MEASURED for `es`** (SPIKE A).
+
+**`H34-m1` / `H34-M1`, corrected 2026-08-11.** This sentence read *"measured and
+below bar for `en`/`es`/`fr`"* — and its own correction sat **62 lines further
+down**, which is a reader-hostile arrangement for a glossary, where the entry is
+the whole point and nobody reads to the end of it. Both halves are fixed here, at
+the top: **Spanish is not measured.** `asr_coverage_ceiling` exists on **11
+committed clip rows — 9 `fr`, 2 `en`, zero `es`**; Spanish's largest bar figure
+anywhere is `matched_within_drift_pct` **68.2** on **22 display words / 11.66 s**
+(`spike-a-results.json#[lang=es]`). **Below bar and not measured are different
+states, and a blind user is entitled to the difference** — that is exactly what
+`voice_langs.sync_grade`'s `unmeasured` value exists to say, so a glossary
+collapsing the two teaches the opposite of what the schema enforces.
 
 **And since 2026-08-10 we know what the bar is bound by — PER LANGUAGE, which is
 not the same claim this entry made for one day.** The matcher was repaired
@@ -478,6 +534,28 @@ words, **453.73** s:
 > **`"drift"`** with **8.0 pp** of headroom. **Same bar, opposite blocker:**
 > French cannot pass on its transcript whatever the matcher does; English can,
 > and this matcher does not.
+
+**Those three English numbers are the PRE-FOLD figures — `spike-a-english.json`
+is stale as of 2026-08-11.** Forge shipped the en-GB↔en-US orthography fold the
+probe below predicted; the committed file was measured before it existed and has
+not been re-run. Current figures, from
+`aligner/spike-a/out/spike-a-english-drift.json`: **90.9** on the bar, ceiling
+**99.1**, **11** absent tokens (was 90.0 / 98.0 / 25). The fold hit its
+prediction **exactly** — predicted ceiling 99.1 = observed 99.1, predicted 11
+absent = observed 11 — and it is worth **+0.9 pp**. **English still fails:** best
+measured **92.2** against 95, gap **2.8 pp**. **The verdict does not move; only
+the reason it fails gets smaller.**
+
+**And the cheap fix is dead.** `verdict.constant_offset_recoverable_pp` is
+**0.0** — shifting every observed token by −250…+250 ms changes
+`matched_within_drift_pct` by nothing, because §6.1's drift is a *local* residual
+against a token's own two neighbours and a uniform shift moves all three
+together. **The `+90 ms` English calibration and the `−80/−120 ms` leads named in
+three artifacts cannot buy one token, in any language.** What is left is
+**prosody** — interior words **96.1%** in-bound against boundary words at
+**63.8%** — and that is a property of the bar's own drift definition. Changing it
+is an **open owner decision**, governed by `H17-C3`: the bound may not be moved to
+make a measurement pass.
 
 **So the blocker is a property of the LANGUAGE, not of the duration.** Within
 French the constraint is also length-dependent: on the 8–10 s control clips, two

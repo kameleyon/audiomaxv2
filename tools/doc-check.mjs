@@ -47,6 +47,13 @@ const DOCS = {
   adr3: 'docs/architecture/0003-haitian-creole-tts-routing.md',
   adr4: 'docs/architecture/0004-the-accessibility-gate-is-an-api-conformance-harness.md',
   adr5: 'docs/architecture/0005-haitian-creole-is-removed-from-scope.md',
+  // J33-M1 — ADR-0006 carried round 33's entire finding and was in NO guard.
+  // The only mention of `0006` in this file was a COMMENT, written that round,
+  // justifying the `J32-M3` fix by naming a document the checker could not open.
+  // That is H20-M4 for the third time, so the omission is now a FINDING as well
+  // as a fix: see `[DOCS-UNGUARDED]` below, which enumerates `docs/architecture/`
+  // FROM THE INDEX and refuses to let the next ADR be added without this map.
+  adr6: 'docs/architecture/0006-the-matcher-re-synchronises-and-lives-in-the-product.md',
 };
 const PRIVATE = new Set(['spec', 'roadmap']);   // gitignored by owner decision
 // The OTHER harness's trial count, obtained by execution and memoised. Returns
@@ -72,6 +79,21 @@ const CURRENT_REVISION = 19;
 // because NO GUARD READS `aligner/spike-a/out/`. A headline can contradict its
 // own artifact and exit 0." Every check in this file read prose. The documents
 // quote numbers; the numbers live here; nothing compared them.
+// XS-8 — THIS WAS ONE DIRECTORY, AND THE RULE THAT DEPENDS ON IT IS REPO-WIDE.
+// `ARTIFACT_DIR = 'aligner/spike-a/out'` meant `[ART-FIGURE]` and `[ART-METRIC]`
+// never opened `aligner/spike-e/out/`, `aligner/spike-d/out/` or
+// `aligner/spike-c/`, so every SPIKE C/D/E figure standing in prose — the
+// corrected `$0.32–$0.43`, the `1.916` multiplier, the memory figures — was
+// guarded by nothing, and CLAUDE.md's *"add the key to `[ART-FIGURE]`'s
+// `TRACKED` in the same commit that publishes it"* was UNSATISFIABLE for those
+// spikes by anyone. A rule that cannot be obeyed is not a control.
+//
+// Not a second constant: DISCOVERED from the index, so SPIKE F is covered on the
+// day it is created — the same inversion `GATE_IRRELEVANT` made further down for
+// the same reason (an allowlist is blind to whatever is added next).
+const ARTIFACT_ROOT = 'aligner';
+// Kept for the messages that name a path and for `[ART-STALE]`'s reconstruction
+// escape, both of which are about ONE directory — the one with the manifest.
 const ARTIFACT_DIR = 'aligner/spike-a/out';
 // The audio manifest is the ONLY record in this directory that ties a result to
 // the bytes it scored. J26-M5 killed the mtime-based staleness check: git does
@@ -80,9 +102,56 @@ const ARTIFACT_DIR = 'aligner/spike-a/out';
 const MANIFEST = 'tts-manifest.json';
 // Counted from disk, not hand-maintained — a pinned literal is how the v7
 // version guard came to sit green over its own defect (N7-C9).
-const ROUNDS_ON_DISK = existsSync('resources/audits')
-  ? readdirSync('resources/audits').filter((f) => /founding-documents(-round\d+)?\.md$/.test(f)).length
-  : 0;
+//
+// ── H34-M4b — ONE NUMBER WAS SERVING TWO QUESTIONS, AND A NEW FILE SPLIT THEM ──
+// This was a single constant, `ROUNDS_ON_DISK`, computed as the COUNT of files
+// matching `founding-documents(-roundN).md`, and it fed two guards that ask
+// different things:
+//
+//   [SD-COUNT-AUDITS]  how many audit records exist?      -> a COUNT
+//   [SD-UNWRITTEN]     is the round I cite written down?  -> a MAXIMUM
+//
+// While every record was a Jury `founding-documents` file numbered 1..N the two
+// coincided, so nothing distinguished them. `resources/audits/2026-08-10-spike-a-
+// accessibility-round34.md` — Halo's round-34 record, and the report that
+// FORECLOSED this commit — matches neither the filename series nor the
+// coincidence. The result was both errors at once, from one constant:
+//
+//   * [SD-UNWRITTEN] reported `cites round 34 but only 33 audit records exist`
+//     in SEVEN documents, about a record sitting in the directory it counts. A
+//     guard that says a written report was never written, in the run that gates
+//     the commit closing it, is the exact failure `SD-UNWRITTEN` exists to
+//     prevent, pointed the wrong way — and the cheapest way to silence it is to
+//     stop citing the round, i.e. to delete the citation rather than write the
+//     record. **A guard whose cheapest fix is worse than the defect is a guard
+//     that will be worked around.**
+//   * [SD-COUNT-AUDITS] required documents to say `33`, so a reviewer-specific
+//     record was INVISIBLE to the count that exists to keep the trail honest.
+//     Halo's records were never counted; two of them went missing in round 21
+//     while five files cited them, which is the finding that widened
+//     SD-UNWRITTEN's alphabet in the first place.
+//
+// Split, and each derived from the directory rather than from one naming
+// convention — a series prefix is a convention, and this file has been bitten
+// three times by a guard that knew one alphabet (J23-M3, and the H-prefix note
+// at SD-UNWRITTEN). Both still read the DISK here, as before; neither is pinned.
+//
+// EDITED BY SCRIBE, 2026-08-11, and flagged rather than quiet: `tools/` is
+// Forge's, and this is a correctness repair to a guard's PREDICATE, never a
+// relaxation — SD-UNWRITTEN gets strictly harder (it now sees Halo's rounds at
+// all) and SD-COUNT-AUDITS counts strictly more files. **Forge reviews.**
+const AUDIT_FILES = existsSync('resources/audits')
+  ? readdirSync('resources/audits').filter((f) => f.endsWith('.md'))
+  : [];
+// The COUNT question: every record in the directory, whoever wrote it.
+const AUDIT_RECORDS_ON_DISK = AUDIT_FILES.length;
+// The MAXIMUM question: the highest round number any record claims, from any
+// reviewer's series. A record with no round in its name contributes nothing to
+// the maximum and still counts above.
+const ROUNDS_ON_DISK = AUDIT_FILES.reduce((max, f) => {
+  const m = f.match(/round(\d{1,3})\.md$/);
+  return m ? Math.max(max, Number(m[1])) : max;
+}, AUDIT_FILES.some((f) => /founding-documents\.md$/.test(f)) ? 1 : 0);
 
 const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : null);
 
@@ -185,31 +254,59 @@ const section = (t, from, to) => {
 // J29-m4: enumerated and read FROM THE INDEX. On this disk the gitignored
 // `*-gt.wav` still exist, so reading the disk hashed audio no clone has —
 // which is how J29-M4 passed here and went red on every checkout.
+// EVERY spike's artifact directory, discovered from the index. A spike keeps its
+// artifacts either in `aligner/<spike>/out/` (a, d, e) or directly in
+// `aligner/<spike>/` (c), and both shapes are found by looking for committed
+// `.json` rather than by knowing which spike does which.
+function artifactDirs(index) {
+  const dirs = [];
+  for (const spike of index.listDir(ARTIFACT_ROOT)) {
+    if (!spike.startsWith('spike-')) continue;
+    for (const dir of [`${ARTIFACT_ROOT}/${spike}/out`, `${ARTIFACT_ROOT}/${spike}`]) {
+      if (index.listDir(dir).some((f) => f.endsWith('.json'))) { dirs.push(dir); break; }
+    }
+  }
+  return dirs.sort();
+}
+
 function loadArtifacts(index = INDEX) {
-  const out = { files: {}, keys: new Set(), wavs: {}, present: false, mode: index.mode };
+  // `files` is keyed by FULL PATH now that more than one directory is read.
+  // Two spikes may name a file the same way (`artifact.json`), and a basename
+  // key would let one silently shadow the other — which is the collision this
+  // file has been bitten by four times with VALUES and would now repeat with
+  // FILENAMES.
+  const out = {
+    files: {}, keys: new Set(), wavsByDir: {}, dirs: artifactDirs(index),
+    present: false, mode: index.mode,
+  };
   const walk = (v) => {
     if (Array.isArray(v)) return v.forEach(walk);
     if (v && typeof v === 'object') {
       for (const [k, x] of Object.entries(v)) { out.keys.add(k); walk(x); }
     }
   };
-  for (const f of index.listDir(ARTIFACT_DIR)) {
-    const p = `${ARTIFACT_DIR}/${f}`;
-    if (f.endsWith('.wav')) {
+  for (const dir of out.dirs) {
+    out.wavsByDir[dir] = {};
+    for (const f of index.listDir(dir)) {
+      const p = `${dir}/${f}`;
+      if (f.endsWith('.wav')) {
+        const buf = index.read(p);
+        if (!buf) continue;
+        out.wavsByDir[dir][f] = {
+          sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length,
+        };
+        continue;
+      }
+      if (!f.endsWith('.json')) continue;
       const buf = index.read(p);
       if (!buf) continue;
-      out.wavs[f] = { sha256: createHash('sha256').update(buf).digest('hex'), bytes: buf.length };
-      continue;
+      try {
+        const data = JSON.parse(buf.toString('utf8'));
+        out.files[p] = { data, dir, name: f };
+        out.present = true;
+        walk(data);
+      } catch { /* a malformed artifact is caught by ART-ABSENT below */ }
     }
-    if (!f.endsWith('.json')) continue;
-    const buf = index.read(p);
-    if (!buf) continue;
-    try {
-      const data = JSON.parse(buf.toString('utf8'));
-      out.files[f] = { data };
-      out.present = true;
-      walk(data);
-    } catch { /* a malformed artifact is caught by ART-ABSENT below */ }
   }
   return out;
 }
@@ -402,8 +499,13 @@ const INVARIANTS = [
   { id: 'INV-UNRELIABLE-PERM', doc: 'spec',
     re: /`transcription_unreliable`[^.]{0,160}are `render_specific`/,
     why: 'transcription_unreliable is a (lang, voice) fact — another voice genuinely can change it, so it is render_specific. Classifying it permanent hides the only remedy this design offers a blind user (R14-A1, successor to INV-OPAQUE-PERM)',
-    mutate: (t) => t.replace(/`transcription_unreliable`\*\* and \*\*`wrong_match`\*\* are `render_specific`/,
-      '`wrong_match`** are `render_specific`') },
+    // Specimen re-anchored 2026-08-11: the §6.3 list gained a fifth member
+    // (`incomplete_match`, H34-C2), so the old two-item pattern
+    // "`transcription_unreliable`** and **`wrong_match`** are `render_specific`"
+    // became a NO-OP and the trial reported it — which is the harness working.
+    // Anchored on the ONE token this guard is about, and on the comma that
+    // follows it, so a sixth member does not break it a third time.
+    mutate: (t) => t.replace(/\*\*`transcription_unreliable`\*\*, /, '') },
   { id: 'INV-TRANSCRIBER-PERM', doc: 'spec',
     re: /`no_transcriber`[^.]{0,160}are `permanent`/,
     why: 'J16-M7 — no_transcriber had only a contradiction guard. Deleting it from the permanent list writes no wrong sentence, so nothing fired, and the derivation fell through to "else retryable" — inviting a blind ht user to pay again for a retry that cannot succeed. This is the presence half of the pair',
@@ -537,6 +639,242 @@ function artifactsFor(index) {
   return _artifactCache.get(index);
 }
 const ARTIFACTS = artifactsFor(INDEX);
+
+// ── figure-check — J33-M3 ─────────────────────────────────────────────────
+//
+// "Stop writing rules for yourself and start writing checks."
+//
+// Round 33: FIVE relay errors in one session; agents caught five, the author
+// caught zero; TWO of them happened AFTER the rule against them was written, BY
+// ITS AUTHOR. Prevention rate 0/5. The rule's content was right — obeyed, the
+// first error was unwritable — and it was addressed to attention rather than to
+// execution, which is the same shape as J33-M1 (a comment naming a document no
+// guard opens) and J33-M2 (a control guarding a copy of its predicate).
+//
+// Every one of the five dies at a KEY-EXISTENCE-AND-VALUE check over the
+// committed artifacts, and this file already had the machinery. The first error
+// claimed `asr_coverage_ceiling` for `-para` rows that carry no such key, so
+// KEY EXISTENCE — not value disagreement — is the load-bearing half, and a
+// missing key is a FAILURE here and never an absence to shrug at.
+//
+// It reads the INDEX, like every other guard (J29-m4): the figure a routing
+// message quotes has to be one a clone can reproduce, and a value only on this
+// disk is exactly the class of defect that has already cost this project a
+// Critical. And it reads EVERY spike directory (XS-8), so a SPIKE E cost figure
+// is checkable by the same one-liner as a SPIKE A drift figure.
+//
+//   node tools/doc-check.mjs --figure-check 'spike-a-english.json#verdict.chapter_bound_by=drift'
+//   node tools/doc-check.mjs --figure-check --self-test
+//
+// Exit 0 = the artifact says that. Exit 1 = it does not, and the message says
+// which of the four ways.
+const FIGURE_USAGE = "--figure-check '<file>#<keypath>=<value>' "
+  + "(e.g. 'spike-a-english.json#clips[kind=chapter].matched_within_drift_pct=90.0')";
+
+/** `90.0` → 90, `true` → true, `null` → null, `"drift"` / `drift` → 'drift'. */
+function figureValue(raw) {
+  const s = String(raw).trim();
+  if (/^-?\d+(?:\.\d+)?$/.test(s)) return Number(s);
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  if (s === 'null') return null;
+  return s.replace(/^(['"])(.*)\1$/, '$2');
+}
+
+/**
+ * `clips[kind=chapter].asr_coverage_ceiling.coverage_ceiling_pct_any_matcher`
+ * → key / index / selector steps.
+ *
+ * The `[field=value]` selector exists because relay error 1 was a claim about
+ * "the rows" that is true of one row and false of the other, and a path that can
+ * only say `clips[1]` lets the next author quote the wrong index and be right by
+ * accident. A selector matching zero rows, or more than one, is a FAILURE: an
+ * ambiguous address is not a figure.
+ */
+function figurePath(spec) {
+  const steps = [];
+  const re = /([^.[\]]+)|\[([^\]]*)\]/g;
+  let m;
+  while ((m = re.exec(spec)) !== null) {
+    if (m[1] !== undefined) { steps.push({ kind: 'key', key: m[1] }); continue; }
+    const inner = m[2] ?? '';
+    const eq = inner.indexOf('=');
+    if (eq >= 0) {
+      steps.push({ kind: 'select', field: inner.slice(0, eq), value: figureValue(inner.slice(eq + 1)) });
+    } else if (/^\d+$/.test(inner)) {
+      steps.push({ kind: 'index', index: Number(inner) });
+    } else {
+      steps.push({ kind: 'bad', text: inner });
+    }
+  }
+  return steps;
+}
+
+/**
+ * Check one `file#keypath=value` claim against the committed artifacts.
+ * Returns `{ ok, message }` — never throws, because the caller is an exit code.
+ */
+function figureCheck(claim, art = ARTIFACTS) {
+  const hash = String(claim).indexOf('#');
+  const eq = String(claim).lastIndexOf('=');
+  if (hash < 1 || eq < hash) {
+    return { ok: false, message: `MALFORMED: ${JSON.stringify(claim)}. Usage: ${FIGURE_USAGE}` };
+  }
+  const wantFile = claim.slice(0, hash).trim();
+  const pathText = claim.slice(hash + 1, eq).trim();
+  const want = figureValue(claim.slice(eq + 1));
+
+  // Resolved by PATH SUFFIX so a routing message can say `spike-a-english.json`
+  // without repeating the directory — and ambiguity is a failure, not a pick.
+  const hits = Object.keys(art.files).filter(
+    (p) => p === wantFile || p.endsWith(`/${wantFile}`));
+  if (hits.length === 0) {
+    return { ok: false, message:
+      `NO SUCH ARTIFACT: ${wantFile} is not in the index under ${ARTIFACT_ROOT}/spike-*. `
+      + `Known: ${Object.keys(art.files).length} file(s)${art.mode === 'worktree'
+        ? ' (DEGRADED: no git index, this read the working tree)' : ''}.` };
+  }
+  if (hits.length > 1) {
+    return { ok: false, message: `AMBIGUOUS ARTIFACT: ${wantFile} matches ${hits.join(', ')}` };
+  }
+  const file = hits[0];
+
+  let node = art.files[file].data;
+  const trail = [];
+  for (const step of figurePath(pathText)) {
+    const at = trail.join('') || '(root)';
+    if (step.kind === 'bad') {
+      return { ok: false, message: `MALFORMED PATH: [${step.text}] at ${at}. Usage: ${FIGURE_USAGE}` };
+    }
+    if (step.kind === 'key') {
+      trail.push(trail.length ? `.${step.key}` : step.key);
+      if (node === null || typeof node !== 'object' || Array.isArray(node)
+          || !Object.prototype.hasOwnProperty.call(node, step.key)) {
+        // THE LEG THAT WOULD HAVE BLOCKED RELAY ERROR 1.
+        const near = node && typeof node === 'object' && !Array.isArray(node)
+          ? Object.keys(node).slice(0, 12).join(', ') : String(node);
+        return { ok: false, message:
+          `NO SUCH KEY: \`${trail.join('')}\` does not exist in ${file}. `
+          + `At ${at} the keys are: ${near}. A figure quoted from a key the artifact does `
+          + `not carry is not a weaker claim than a wrong value — it is a claim about `
+          + `nothing.` };
+      }
+      node = node[step.key];
+      continue;
+    }
+    if (!Array.isArray(node)) {
+      return { ok: false, message:
+        `NOT A LIST: \`${trail.join('') || '(root)'}\` is ${typeof node}, and the path `
+        + `subscripts it.` };
+    }
+    if (step.kind === 'index') {
+      trail.push(`[${step.index}]`);
+      if (step.index >= node.length) {
+        return { ok: false, message:
+          `NO SUCH INDEX: ${trail.join('')} — the list has ${node.length} entries in ${file}.` };
+      }
+      node = node[step.index];
+      continue;
+    }
+    trail.push(`[${step.field}=${step.value}]`);
+    const rows = node.filter((r) => r && typeof r === 'object' && r[step.field] === step.value);
+    if (rows.length !== 1) {
+      const seen = node.map((r) => (r && typeof r === 'object' ? JSON.stringify(r[step.field]) : '?'));
+      return { ok: false, message:
+        `SELECTOR MATCHED ${rows.length} ROWS at ${trail.join('')} in ${file} — exactly one is `
+        + `required, because an ambiguous address is not a figure. \`${step.field}\` values `
+        + `present: ${seen.join(', ')}.` };
+    }
+    node = rows[0];
+  }
+
+  const same = (typeof want === 'number' && typeof node === 'number')
+    ? node === want
+    : node === want;
+  if (!same) {
+    return { ok: false, message:
+      `WRONG VALUE: ${file}#${pathText} is ${JSON.stringify(node)}, not ${JSON.stringify(want)}.` };
+  }
+  return { ok: true, message: `${file}#${pathText} = ${JSON.stringify(node)}` };
+}
+
+// Every failure mode, falsified. A checker whose failures are untested is a
+// checker that reports PASS on a typo — which is how a relay error survives a
+// tool built to stop relay errors.
+const FIGURE_TRIALS = [
+  ['a correct figure passes',
+    'spike-a-english.json#verdict.chapter_end_to_end_matched_within_drift_pct=90.0', true],
+  ['a correct figure passes through a ROW SELECTOR',
+    'spike-a-english.json#clips[kind=chapter].matched_within_drift_pct=90.0', true],
+  // XS-8: a non-spike-a artifact is reachable. Before that fix this trial could
+  // not be written, because the loader never opened `aligner/spike-e/out/`.
+  // XS-8's own routing message quoted this key as `answer_5_cost_figure.defect_1`.
+  // The tool's FIRST run rejected it and printed the real key list — a relay
+  // error caught by the tool built to catch relay errors, before either had been
+  // reviewed. That is the argument for the tool, made by the tool.
+  ['a SPIKE E figure passes — the directory `[ART-FIGURE]` could not see',
+    'spike-e-results.json#answer_5_cost_figure.defect_1_missing_stages.'
+    + 'pipeline_multiplier=1.916', true],
+  // RELAY ERROR 1's EXACT SHAPE: a key that exists on the rows of ONE artifact,
+  // claimed for the rows of another. `orthography_probe` is emitted only by
+  // `english.py`; `spike-a-voices.json`'s nine French rows carry no such key,
+  // and a claim about it there is a claim about nothing.
+  ['RELAY ERROR 1: a key the row does not carry FAILS',
+    'spike-a-voices.json#clips[audio_path=fr.wav].orthography_probe.'
+    + 'ceiling_recovered_pp=1.1', false],
+  ['a misspelled key FAILS rather than reading as absent',
+    'spike-a-english.json#verdict.chapter_bound_bY=drift', false],
+  ['a wrong value FAILS',
+    'spike-a-english.json#verdict.chapter_bound_by=recognition', false],
+  ['a wrong NUMBER fails even when it is close',
+    'spike-a-english.json#verdict.chapter_end_to_end_matched_within_drift_pct=90.1', false],
+  ['a wrong BOOLEAN fails',
+    'spike-a-english.json#verdict.chapter_end_to_end_clears_bar=true', false],
+  ['an unknown artifact FAILS',
+    'spike-a-nonesuch.json#verdict.chapter_bound_by=drift', false],
+  ['a selector matching NO row fails',
+    'spike-a-english.json#clips[kind=sentence].matched_within_drift_pct=90.0', false],
+  ['a selector matching MANY rows fails',
+    'spike-a-english.json#clips[lang_code=en].matched_within_drift_pct=90.0', false],
+  ['an out-of-range index fails',
+    'spike-a-english.json#clips[9].matched_within_drift_pct=90.0', false],
+  ['subscripting a non-list fails',
+    'spike-a-english.json#verdict[0]=90.0', false],
+  ['a malformed claim fails instead of passing vacuously', 'spike-a-english.json', false],
+];
+const FIGURE_TRIAL_COUNT = FIGURE_TRIALS.length;
+
+if (process.argv.includes('--figure-check')) {
+  const rest = process.argv.slice(process.argv.indexOf('--figure-check') + 1)
+    .filter((a) => a !== '--self-test');
+  if (process.argv.includes('--self-test')) {
+    let failed = 0;
+    for (const [what, claim, expectPass] of FIGURE_TRIALS) {
+      const r = figureCheck(claim);
+      const ok = r.ok === expectPass;
+      if (!ok) {
+        failed += 1;
+        console.log(`  FAIL  ${what}\n        ${claim}\n        got ${r.ok ? 'PASS' : 'FAIL'}: ${r.message}`);
+      }
+    }
+    console.log(`figure-check --self-test: ${FIGURE_TRIAL_COUNT - failed} passed, ${failed} failed`);
+    console.log('  (each runs the SHIPPED figureCheck against the committed artifacts;');
+    console.log('   every failure mode has a specimen, so a checker that stopped failing');
+    console.log('   on a bad claim is a red trial and not a quiet pass)');
+    process.exit(failed ? 1 : 0);
+  }
+  if (!rest.length) {
+    console.log(`figure-check: nothing to check. Usage: ${FIGURE_USAGE}`);
+    process.exit(1);
+  }
+  let bad = 0;
+  for (const claim of rest) {
+    const r = figureCheck(claim);
+    if (!r.ok) bad += 1;
+    console.log(`${r.ok ? 'OK  ' : 'FAIL'}  ${r.message}`);
+  }
+  process.exit(bad ? 1 : 0);
+}
 
 // [ART-FIGURE] abstains where prose binds a number to no metric unambiguously.
 // Counted and printed, never silent: a check that quietly examines nothing is
@@ -851,7 +1189,14 @@ const EXTRA_TRIALS = [
   // the loader still enumerated it with readdirSync this stays green, which is
   // J29-M4's shape exactly — the gitignored `*-gt.wav` were read here and were
   // in no clone.
-  ['ART-ABSENT', null, null, { index: indexWithout(/^aligner\/spike-a\/out\//) }],
+  //
+  // XS-8 widened this from `spike-a/out` to EVERY spike directory. It had to be:
+  // with only `spike-a/out` removed the loader still found `spike-c`, `spike-d`
+  // and `spike-e`, `art.present` stayed true and the trial went green over a
+  // loader that could have been reading the disk. A trial whose specimen stops
+  // being the defect is a trial that passes for the wrong reason — the exact
+  // failure `--self-test` exists to make impossible, caught here by running it.
+  ['ART-ABSENT', null, null, { index: indexWithout(/^aligner\/spike-[a-z0-9]+\//) }],
 ];
 const TRIAL_COUNT = BANNED.length + INVARIANTS.length + STRUCTURAL.length + EXTRA_TRIALS.length;
 
@@ -874,6 +1219,27 @@ function runChecks(src, opts = {}) {
 
   if (!schemaText) add('CRITICAL', 'locator', 'spec', 0, '[LOC-7] §7 Data model not found');
   if (!phase1) add('CRITICAL', 'locator', 'roadmap', 0, '[LOC-P1] Phase 1 not found');
+
+  // ── [DOCS-UNGUARDED] — an ADR outside DOCS is an ADR no check reads ──────
+  //
+  // J33-M1, and H20-M4 three rounds before it, and J19-M2 before that: the SAME
+  // defect, three times. `DOCS` is hand-maintained because each key is a guard's
+  // `doc:` handle and cannot be generated; the OMISSION can be, and now is. The
+  // list is read FROM THE INDEX, so an ADR that is committed and unguarded is a
+  // finding rather than a thing for the next author to remember. Round 33's own
+  // words: "the fix for J32-M3 was justified by naming a document the checker
+  // cannot open."
+  const guardedDocs = new Set(Object.values(DOCS));
+  for (const f of index.listDir('docs/architecture').sort()) {
+    if (!f.endsWith('.md')) continue;
+    const p = `docs/architecture/${f}`;
+    if (guardedDocs.has(p)) continue;
+    add('MAJOR', 'docs-coverage', 'adrIndex', 0,
+      `[DOCS-UNGUARDED] ${p} is committed and is in NO guard — \`DOCS\` in this file does ` +
+      `not carry it, so every prose guard, every figure check and every self-description ` +
+      `check is blind to it. This is J33-M1 / H20-M4 / J19-M2, which is three rounds of the ` +
+      `same defect. Add it to \`DOCS\`.`);
+  }
 
   // 1. Field coverage, forward
   const declared = new Map();
@@ -1812,7 +2178,7 @@ function runChecks(src, opts = {}) {
   // 9. THE MEASUREMENT ARTIFACTS (J22-M5 / H26). No guard read aligner/spike-a/out/.
   if (!art.present) {
     add('CRITICAL', 'artifact', 'roadmap', 0,
-      `[ART-ABSENT] no parsable JSON in ${ARTIFACT_DIR}. Every artifact check below is ` +
+      `[ART-ABSENT] no parsable JSON under ${ARTIFACT_ROOT}/spike-*. Every artifact check below is ` +
       `vacuous, and a vacuous check that reports nothing is how this gate sat green over ` +
       `two Blockers in round 26.`);
   } else {
@@ -1834,7 +2200,7 @@ function runChecks(src, opts = {}) {
       if (!art.keys.has(key)) {
         add('CRITICAL', 'artifact', 'roadmap', 0,
           `[ART-METRIC] the roadmap requires SPIKE A to return \`${key}\` and NO file in ` +
-          `${ARTIFACT_DIR} contains that key. A metric required in prose and emitted by nothing ` +
+          `no artifact under ${ARTIFACT_ROOT}/spike-* contains that key. A metric required in prose and emitted by nothing ` +
           `is a claim, not a measurement (H26-M6).`);
       }
     }
@@ -1915,7 +2281,7 @@ function runChecks(src, opts = {}) {
     for (const { key: metric } of TRACKED) {
       if (!configurations(art, metric).length) {
         add('CRITICAL', 'artifact', 'roadmap', 0,
-          `[ART-VACUOUS] no file in ${ARTIFACT_DIR} reports \`${metric}\`, so every ` +
+          `[ART-VACUOUS] no file under ${ARTIFACT_ROOT}/spike-* reports \`${metric}\`, so every ` +
           `[ART-FIGURE] comparison against it checks NOTHING. This is J26-M3 verbatim: the ` +
           `previous version tracked \`${metric}_pct\`-style near-misses and skipped them with ` +
           `a silent \`continue\`. A guard whose input set is empty must go red, not quiet — ` +
@@ -2019,7 +2385,7 @@ function runChecks(src, opts = {}) {
         if (configs.some((c) => wanted.every((v) => c.vals.has(v)))) continue;
         add('MAJOR', 'artifact', key, lineOf(txt, head.at),
           `[ART-FIGURE] quotes ${wanted.join(' / ')} for \`${metric}\`, and NO single ` +
-          `configuration in ${ARTIFACT_DIR} produces that${wanted.length > 1 ? ' set' : ''}. ` +
+          `configuration under ${ARTIFACT_ROOT}/spike-* produces that${wanted.length > 1 ? ' set' : ''}. ` +
           `Reported: ${configs.map((c) => `${c.label} {${[...c.vals].sort((a, b) => a - b).join(', ')}}`).join(' · ')}. ` +
           `A figure set assembled from more than one file or more than one accounting basis is ` +
           `not a run's output — it is a construction (J26-M2). Re-run the harness or correct ` +
@@ -2043,11 +2409,23 @@ function runChecks(src, opts = {}) {
     // was `spike-a-results.json` describing audio it never heard, and the tell
     // was that the audio had been CORRECTED — different bytes, different
     // duration — while the results still carried the old one.
-    const manifest = art.files[MANIFEST]?.data;
-    const wavs = art.wavs ?? {};
+    // XS-8 scoping. Provenance is a PER-DIRECTORY record: the manifest names the
+    // audio in its own directory and nothing else. A spike directory with no
+    // manifest therefore has no provenance leg to run — and that ABSENCE is
+    // announced in the run summary rather than skipped silently, because a leg
+    // that quietly does not run is the failure this whole section documents.
+    const manifestDir = Object.values(art.files).find((v) => v.name === MANIFEST)?.dir
+      ?? ARTIFACT_DIR;
+    for (const dir of art.dirs ?? []) {
+      if (dir === manifestDir) continue;
+      ABSTENTIONS.set(`[ART-STALE] ${dir} (no ${MANIFEST})`,
+        (ABSTENTIONS.get(`[ART-STALE] ${dir} (no ${MANIFEST})`) ?? 0) + 1);
+    }
+    const manifest = art.files[`${manifestDir}/${MANIFEST}`]?.data;
+    const wavs = art.wavsByDir?.[manifestDir] ?? {};
     if (!Array.isArray(manifest)) {
       add('MAJOR', 'artifact', 'roadmap', 0,
-        `[ART-STALE] ${ARTIFACT_DIR}/${MANIFEST} is absent or is not a list. It is the only ` +
+        `[ART-STALE] ${manifestDir}/${MANIFEST} is absent or is not a list. It is the only ` +
         `record tying a result to the bytes it scored, and without it no clone can tell ` +
         `whether a figure describes the audio in the repository (J26-M5).`);
     } else {
@@ -2056,11 +2434,11 @@ function runChecks(src, opts = {}) {
         const rec = byPath.get(wav);
         if (!rec) {
           add('MAJOR', 'artifact', 'roadmap', 0,
-            `[ART-STALE] ${ARTIFACT_DIR}/${wav} is present and ${MANIFEST} does not describe ` +
+            `[ART-STALE] ${manifestDir}/${wav} is present and ${MANIFEST} does not describe ` +
             `it. Audio with no recorded hash cannot be tied to any result.`);
         } else if (rec.sha256 !== got.sha256 || rec.bytes !== got.bytes) {
           add('MAJOR', 'artifact', 'roadmap', 0,
-            `[ART-STALE] ${ARTIFACT_DIR}/${wav} hashes to ${got.sha256.slice(0, 12)}… ` +
+            `[ART-STALE] ${manifestDir}/${wav} hashes to ${got.sha256.slice(0, 12)}… ` +
             `(${got.bytes} bytes); ${MANIFEST} records ${String(rec.sha256).slice(0, 12)}… ` +
             `(${rec.bytes} bytes). The audio changed after the manifest was written, so every ` +
             `figure scored against it is stale. Re-run the step that writes it (H26-C1).`);
@@ -2082,7 +2460,7 @@ function runChecks(src, opts = {}) {
       for (const rec of byPath.values()) {
         if (wavs[rec.path]) continue;
         const src = typeof rec.reconstructible_from === 'string' ? rec.reconstructible_from : null;
-        const srcPath = src ? `${ARTIFACT_DIR}/${src}`.replace(/\/+$/, '') : null;
+        const srcPath = src ? `${manifestDir}/${src}`.replace(/\/+$/, '') : null;
         // Asked of the INDEX, like everything else here (J29-m4): a directory
         // that exists only on this disk cannot back a reconstruction anyone
         // else can perform, and that is the whole point of the escape.
@@ -2090,13 +2468,18 @@ function runChecks(src, opts = {}) {
         if (srcOk && rec.sha256) continue;
         add('MAJOR', 'artifact', 'roadmap', 0,
           `[ART-STALE] ${MANIFEST} records ${rec.path} and no such file is in ` +
-          `${ARTIFACT_DIR}. The evidence a result cites is not in the repository.` +
+          `${manifestDir}. The evidence a result cites is not in the repository.` +
           (src
             ? ` The row claims \`reconstructible_from: ${src}\`, but ${srcOk ? 'it carries no sha256 to check the rebuild against' : `${srcPath} is absent or empty`} — a reconstruction nobody can perform or verify is an absence with a label on it.`
             : ` If it is rebuildable from committed bytes, say so with \`reconstructible_from\` and keep the sha256, so the claim is checkable.`));
       }
       for (const [f, v] of Object.entries(art.files)) {
-        if (f === MANIFEST) continue;
+        // Only the manifest's OWN directory. A `spike-e` row naming `lang` and
+        // `clip_seconds` describes a timing run, not a clip this manifest
+        // records, and charging it against a manifest that was never about it
+        // would be a guard inventing a defect — which is worse than a guard that
+        // does not run, because it teaches people to ignore the guard.
+        if (v.dir !== manifestDir || v.name === MANIFEST) continue;
         for (const row of scoredRows(v.data)) {
           // Resolve by an EXPLICIT audio_path when the row carries one. The
           // `${lang}.wav` convention assumes ONE clip per language, which stops
@@ -2108,11 +2491,11 @@ function runChecks(src, opts = {}) {
           const rec = byPath.get(wanted);
           if (!rec) {
             add('MAJOR', 'artifact', 'roadmap', 0,
-              `[ART-STALE] ${ARTIFACT_DIR}/${f} reports a result for \`${row.lang}\` and ` +
+              `[ART-STALE] ${f} reports a result for \`${row.lang}\` and ` +
               `${MANIFEST} has no entry for ${wanted} — the audio it scored is unidentified.`);
           } else if (Math.abs(Number(rec.seconds) - row.audio_seconds) > 0.011) {
             add('MAJOR', 'artifact', 'roadmap', 0,
-              `[ART-STALE] ${ARTIFACT_DIR}/${f} scored ${row.audio_seconds}s of \`${row.lang}\` ` +
+              `[ART-STALE] ${f} scored ${row.audio_seconds}s of \`${row.lang}\` ` +
               `audio; ${MANIFEST} says ${wanted} is ${rec.seconds}s. The result describes ` +
               `audio that is not the audio in this repository (H26-C1, J26-M5). Re-run it.`);
           }
@@ -2222,9 +2605,9 @@ function runChecks(src, opts = {}) {
     // now performs — it mutates a document that has NO roster phrase, so a
     // re-nesting puts the trial red rather than leaving it green and blind.
     for (const m of txt.matchAll(/([0-9]{1,3})\s+(?:committed\s+)?audit records/gi)) {
-      if (Number(m[1]) !== ROUNDS_ON_DISK) {
+      if (Number(m[1]) !== AUDIT_RECORDS_ON_DISK) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
-          `[SD-COUNT-AUDITS] claims ${m[1]} audit records; ${ROUNDS_ON_DISK} exist on disk`);
+          `[SD-COUNT-AUDITS] claims ${m[1]} audit records; ${AUDIT_RECORDS_ON_DISK} exist on disk`);
       }
     }
     // The roadmap enumerates rounds as a FILENAME list, which the range form
@@ -2311,9 +2694,17 @@ function runChecks(src, opts = {}) {
       const lineStart = txt.lastIndexOf(NL, m.index) + 1;
       const lineEnd = txt.indexOf(NL, m.index);
       const lineText = txt.slice(lineStart, lineEnd < 0 ? txt.length : lineEnd);
+      // THREE harnesses now (J33-M3 added `figure-check`, which has its own
+      // trial table and its own count). Scoped by the claim's own line, and
+      // extended HERE rather than when someone first documents the new one:
+      // a guard that compares the wrong harness's count is how documenting the
+      // SECOND one made this report the FIRST one as wrong.
       const isSecretScan = /secret-scan/.test(lineText);
-      const expected = isSecretScan ? secretScanTrials() : TRIAL_COUNT;
-      const harness = isSecretScan ? 'secret-scan --self-test' : 'doc-check --self-test';
+      const isFigureCheck = /figure-check/.test(lineText);
+      const expected = isSecretScan ? secretScanTrials()
+        : isFigureCheck ? FIGURE_TRIAL_COUNT : TRIAL_COUNT;
+      const harness = isSecretScan ? 'secret-scan --self-test'
+        : isFigureCheck ? 'doc-check --figure-check --self-test' : 'doc-check --self-test';
       if (expected === null) {
         add('MAJOR', 'self-description', key, lineOf(txt, m.index),
           `[SD-SELFTEST] this line claims a secret-scan --self-test result, and this gate could ` +

@@ -63,10 +63,14 @@ unsupported-language class rather than its counter-example.
 ## Consequences
 
 **Simplification.** The **`align_*` half** of the message catalogue drops from
-20 keys × 4 languages (80 strings) to 20 × 3 (**60 strings**). *That is the
-`align_*` budget only* (`H20-C1`); the catalogue's total is **~54 keys / ~162
-strings across three languages** (spec §9, recounted for `H26-C3`), and quoting
-the 20/60 pair as the whole catalogue is the defect `H20-C1` was filed for.
+20 keys × 4 languages (80 strings) to 20 × 3 (**60 strings**) — *the saving this
+ADR records, at the size the budget was on 2026-08-08.* **The current budget is
+22 keys / 66 strings**, because `H34-C2` added `incomplete_match` as a ninth
+cause on 2026-08-11; the saving is unchanged, the total is not. *That is the
+`align_*` budget only* (`H20-C1`); the catalogue's total is **~56 keys / ~168
+strings across three languages** (spec §9, recounted for `H26-C3` and again for
+`H34-C2`), and quoting the `align_*` pair as the whole catalogue is the defect
+`H20-C1` was filed for.
 SPIKE A's language-coverage matrix
 covers the three supported languages instead of the eleven the reference stack
 routes — and the scope question that `J18-M4` opened closes with it.

@@ -20,6 +20,8 @@
     "verify:voice-langs": "node supabase/tests/verify_voice_langs.mjs",
     "doc-check": "node tools/doc-check.mjs",
     "doc-check:self-test": "node tools/doc-check.mjs --self-test",
+    "a11y": "node tests/a11y/conformance.mjs",
+    "a11y:self-test": "node tests/a11y/conformance.mjs --self-test",
     "dev:worker": "pnpm --filter @audiomax/worker dev",
     "dev:aligner": "python aligner/service.py"
   },

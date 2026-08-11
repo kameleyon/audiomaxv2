@@ -56,8 +56,25 @@ import harness as H
 
 ROOT = pathlib.Path(__file__).parent; OUT = ROOT / "out"
 FX = json.loads((ROOT / "fixtures.json").read_text(encoding="utf-8"))
-E = R.env()
-model = B.get_model(); tokenizer = B.get_tokenizer(); aligner = B.get_aligner()
+
+# ── NOTHING AT IMPORT TIME SPENDS MONEY OR LOADS A MODEL ─────────────────────
+# This file used to call `R.env()` and build the MMS_FA model at module scope and
+# then run the whole comparison at module scope as well, so `import fa` — which
+# is the only way to reach `spell()` and `romanize()` from another spike script —
+# made SIX paid Lemonfox ASR calls and rewrote a committed artifact. That is not
+# a style point: the owner's standing rule is one call, verified on the
+# dashboard, then ask. A module that spends on import cannot obey it, and the
+# author of the importing script cannot see that it will.
+_MODEL = {}
+
+
+def _mms():
+    """MMS_FA model/tokenizer/aligner, built once, on first use."""
+    if not _MODEL:
+        _MODEL["model"] = B.get_model()
+        _MODEL["tokenizer"] = B.get_tokenizer()
+        _MODEL["aligner"] = B.get_aligner()
+    return _MODEL["model"], _MODEL["tokenizer"], _MODEL["aligner"]
 
 NUM = {"en": ["zero","one","two","three","four","five","six","seven","eight","nine",
                "ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen",
@@ -120,6 +137,7 @@ def tokens_for(display, lang):
 
 
 def fa_words(wav, display, lang):
+    model, tokenizer, aligner = _mms()
     wf, sr = torchaudio.load(str(wav))
     if wf.shape[0] > 1: wf = wf.mean(0, keepdim=True)
     if sr != B.sample_rate:
@@ -134,54 +152,61 @@ def fa_words(wav, display, lang):
     return out, owner
 
 
-print(f"{'grp':<10}{'lang':<5}{'n':>4}{'cov':>6}{'median IoU':>12}{'>=50%':>8}{'abs':>8}{'signed':>9}")
-res = []
-for group, suf in (("languages", ""), ("holdout", "-holdout")):
-    for lang, spec in FX[group].items():
-        wav = OUT / f"{lang}{suf}.wav"
-        if not wav.exists(): continue
-        display = H.display_units(spec["text"])
-        try:
-            W, owner = fa_words(wav, display, lang)
-        except Exception as e:
-            print(f"{group:<10}{lang:<5}  {type(e).__name__}: {str(e)[:70]}"); continue
-        fa_units = H.units_from_expansion(W, owner)
-        ref = R.lemonfox_words(wav, E["LEMONFOX_API_KEY"], lang)
-        ref_units = H.units_from_asr(
-            [{"w": x["word"], "s": float(x["start"]), "e": float(x["end"])} for x in ref],
-            display, lang)
-        pairs = H.pair_by_display(fa_units, ref_units)
-        if not pairs:
-            print(f"{group:<10}{lang:<5}   no comparable tokens"); continue
-        sc = H.score_pairs(pairs, display)
-        # COVERAGE is now a reported number, not a silent filter. The old
-        # uniqueness rule dropped 8-10 of 24 words and said nothing; anything
-        # this comparison still cannot pair is named below.
-        cov = 100.0 * len(pairs) / len(display)
-        unpaired = [display[i][0] for i in range(len(display))
-                    if i not in fa_units or i not in ref_units]
-        hard = H.hard_token_report(spec, display,
-                                   {i: {"via_normalizer": ref_units[i]["via_normalizer"],
-                                        "obs": ref_units[i]["obs"]} for i, _, _ in pairs}, lang)
-        print(f"{group:<10}{lang:<5}{sc['words']:>4}{cov:>5.0f}%{sc['median_overlap_pct']:>11.0f}%"
-              f"{sc['pct_overlap_50']:>7.0f}%{sc['median_abs_error_ms']:>7.0f}ms"
-              f"{sc['median_signed_start_delta_ms']:>+8.0f}ms")
-        res.append({"group": group, "lang": lang, **sc,
-                    "display_words": len(display),
-                    "display_coverage_pct": round(cov, 1),
-                    "unpaired_display": unpaired,
-                    "expect_hard": hard,
-                    "engine": "torchaudio MMS_FA forced alignment",
-                    "reference": "lemonfox-asr",
-                    "calibration": "none",
-                    "_pairing": ("positional on DISPLAY TOKEN INDEX. FA tokens are grouped back "
-                                 "onto the display token that produced them (so `1984` and "
-                                 "`nineteen eighty four` are ONE unit); the reference stream is "
-                                 "mapped onto display tokens by measure.match. No surface-form "
-                                 "uniqueness filter, so function words are retained (H26-B2, H26-M8)."),
-                    "_error_basis": ("median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT "
-                                     "against Lemonfox ASR word timestamps, NOT error against human "
-                                     "ground truth. Two mechanisms with uncorrelated error models "
-                                     "agreeing bounds the common error; it does not measure it.")})
-H.write_json(OUT / "spike-a-forced-alignment.json", res)
-print("\nwrote out/spike-a-forced-alignment.json")
+def main() -> int:
+    E = R.env()
+    print(f"{'grp':<10}{'lang':<5}{'n':>4}{'cov':>6}{'median IoU':>12}{'>=50%':>8}{'abs':>8}{'signed':>9}")
+    res = []
+    for group, suf in (("languages", ""), ("holdout", "-holdout")):
+        for lang, spec in FX[group].items():
+            wav = OUT / f"{lang}{suf}.wav"
+            if not wav.exists(): continue
+            display = H.display_units(spec["text"])
+            try:
+                W, owner = fa_words(wav, display, lang)
+            except Exception as e:
+                print(f"{group:<10}{lang:<5}  {type(e).__name__}: {str(e)[:70]}"); continue
+            fa_units = H.units_from_expansion(W, owner)
+            ref = R.lemonfox_words(wav, E["LEMONFOX_API_KEY"], lang)
+            ref_units = H.units_from_asr(
+                [{"w": x["word"], "s": float(x["start"]), "e": float(x["end"])} for x in ref],
+                display, lang)
+            pairs = H.pair_by_display(fa_units, ref_units)
+            if not pairs:
+                print(f"{group:<10}{lang:<5}   no comparable tokens"); continue
+            sc = H.score_pairs(pairs, display)
+            # COVERAGE is now a reported number, not a silent filter. The old
+            # uniqueness rule dropped 8-10 of 24 words and said nothing; anything
+            # this comparison still cannot pair is named below.
+            cov = 100.0 * len(pairs) / len(display)
+            unpaired = [display[i][0] for i in range(len(display))
+                        if i not in fa_units or i not in ref_units]
+            hard = H.hard_token_report(spec, display,
+                                       {i: {"via_normalizer": ref_units[i]["via_normalizer"],
+                                            "obs": ref_units[i]["obs"]} for i, _, _ in pairs}, lang)
+            print(f"{group:<10}{lang:<5}{sc['words']:>4}{cov:>5.0f}%{sc['median_overlap_pct']:>11.0f}%"
+                  f"{sc['pct_overlap_50']:>7.0f}%{sc['median_abs_error_ms']:>7.0f}ms"
+                  f"{sc['median_signed_start_delta_ms']:>+8.0f}ms")
+            res.append({"group": group, "lang": lang, **sc,
+                        "display_words": len(display),
+                        "display_coverage_pct": round(cov, 1),
+                        "unpaired_display": unpaired,
+                        "expect_hard": hard,
+                        "engine": "torchaudio MMS_FA forced alignment",
+                        "reference": "lemonfox-asr",
+                        "calibration": "none",
+                        "_pairing": ("positional on DISPLAY TOKEN INDEX. FA tokens are grouped back "
+                                     "onto the display token that produced them (so `1984` and "
+                                     "`nineteen eighty four` are ONE unit); the reference stream is "
+                                     "mapped onto display tokens by measure.match. No surface-form "
+                                     "uniqueness filter, so function words are retained (H26-B2, H26-M8)."),
+                        "_error_basis": ("median_abs_error_ms / p95_abs_error_ms are ENGINE DISAGREEMENT "
+                                         "against Lemonfox ASR word timestamps, NOT error against human "
+                                         "ground truth. Two mechanisms with uncorrelated error models "
+                                         "agreeing bounds the common error; it does not measure it.")})
+    H.write_json(OUT / "spike-a-forced-alignment.json", res)
+    print("\nwrote out/spike-a-forced-alignment.json")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

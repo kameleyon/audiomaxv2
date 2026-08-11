@@ -4,7 +4,7 @@ An ADR records **why** a decision was made, by whom, and what it costs — for t
 engineer who joins six months from now and has read none of the audit trail.
 
 Until this directory existed, the decisions below lived only as prose inside
-33 audit records and a design spec that is gitignored. That is tribal
+36 audit records and a design spec that is gitignored. That is tribal
 knowledge with a filename. These 6 ADRs are the first correction.
 
 ## Index
@@ -24,20 +24,31 @@ knowledge with a filename. These 6 ADRs are the first correction.
 the design passed the gate.**
 
 The most recent *recorded* Jury verdict on the design documents is
-**`PASS WITH FIXES`** — **round 31** (`…-round31.md`), zero Blocker, zero
-Critical, **nine Majors** tracked under an owner and a date. Round 30
-(`…-round30.md`) and rounds 18, 19, 25 and 28 also returned `PASS WITH FIXES`;
-the `FAIL`s of rounds 17, 22, 27 and 29 are superseded.
+**`PASS WITH FIXES`** — **round 33** (`…-round33.md`), zero Blocker, zero
+Critical, **four Majors** tracked under an owner and a date. Round 32
+(`…-round32.md`) and rounds 18, 19, 25, 28, 30 and 31 also returned
+`PASS WITH FIXES`; the `FAIL`s of rounds 17, 22, 27 and 29 are superseded.
 
 **Halo cannot issue `PASS` before implementation and has not. Its most recent
-verdict is `FORECLOSES` — round 26 (`…-round26.md`): 2 Blocker · 3 Critical ·
-8 Major · 4 Minor, six items blocking a commit.** Halo has not ruled since, so
-that is the standing accessibility verdict. It is **older** than Jury's and it
-is **not** superseded by it — a later Jury `PASS WITH FIXES` says nothing about
-accessibility foreclosure, and reading it that way is how "accessibility is the
-product" becomes a sentence nobody checks. Read the ADRs as current design
-intent under an open Majors list **and an open Halo foreclosure**, not as a
-certificate.
+verdict is `FORECLOSES` — round 34
+(`2026-08-10-spike-a-accessibility-round34.md`): 0 Blocker · **2 Critical** ·
+6 Major · 4 Minor · 1 Polish, and both Criticals block a commit.** That is the
+standing accessibility verdict, and it is **newer** than Jury's — so nothing on
+this page is gate-approved and the gate is currently **shut**. A Jury
+`PASS WITH FIXES` says nothing about accessibility foreclosure, and reading it
+that way is how "accessibility is the product" becomes a sentence nobody checks.
+Read the ADRs as current design intent under an open Majors list **and an open
+Halo foreclosure**, not as a certificate.
+
+*(**`H34-M4`, corrected 2026-08-11 — the eighth recurrence of this defect.** The
+Jury line was two rounds out of date and the Halo line eight, in the *optimistic*
+direction, in the document a newcomer reads to learn whether the design is
+approved. The 2026-08-10 remedy below — *"every verdict claim here now names its
+round file"* — **was obeyed, and it named a stale round file**, which is the
+argument that this needs a check rather than a further rule. Recommended and
+referred to Forge with the `README.md` twin: a guard that resolves the newest
+audit record per reviewer from the index and fails any `round <N>` verdict claim
+that does not name it *(Forge · due 2026-08-13)*.)*
 
 *(Corrected 2026-08-10. Two errors, both in the optimistic direction, which is
 the direction that matters. The Jury line was **six rounds** out of date. The

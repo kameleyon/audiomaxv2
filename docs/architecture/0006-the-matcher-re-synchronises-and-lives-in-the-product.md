@@ -37,6 +37,35 @@ Design intent, not gate approval — see [the status note](README.md#what-accept
 > generalisation that was never measured. See
 > [the per-language reading](#the-blocker-is-per-language-and-english-is-drift-bound).
 
+> **THE ENGLISH FIGURES IN THIS ADR ARE PRE-FOLD. `spike-a-english.json` is
+> STALE — 2026-08-11.** Forge shipped the en-GB↔en-US orthography fold this ADR
+> predicted (`worker/src/normalize/orthography.ts`). The committed English
+> artifact was measured before it existed and **has not been re-run**, so every
+> **90.0** and **98.0** and **25 absent** below is the figure *before the fold*
+> and must be read as such. Re-running would emit **90.9 / 99.1 / 11**. Those are
+> in `aligner/spike-a/out/spike-a-english-drift.json`, not here.
+>
+> **Three things that ADR follow-up establishes, and none of them softens this
+> one:** the fold **hit its prediction exactly** (predicted ceiling 99.1 =
+> observed 99.1; predicted 11 absent = observed 11;
+> `verdict.orthography_fold_matches_its_prediction: true`) — so the *probe, not a
+> result* caveat below is discharged, in the direction it predicted. **English
+> still fails**: best measured **92.2** against 95, gap **2.8 pp**. And **the
+> constant-offset hypothesis is dead** — `verdict.constant_offset_recoverable_pp`
+> = **0.0**, falsified on the clip rather than argued away.
+>
+> **What is left is prosody, and it belongs to §6.1's drift DEFINITION.**
+> Interior words are **96.1%** in-bound against boundary words at **63.8%**;
+> silence over 150 ms is present in **79.4%** of failing tokens against **20.6%**
+> of passing ones. **Reopening the drift predicate is an open owner decision** and
+> the only identified route to 95 — and `H17-C3` governs it: the bound may not be
+> changed to make a measurement pass.
+>
+> **A forced-alignment sidecar is NOT recommended by this evidence.**
+> `arm_d_fa_refined` is **+1.3 pp** on the chapter clip and **−5.0 pp** on the
+> paragraph clip — opposite signs at n = 2, for a stage priced at 91.6% of ASR
+> again.
+
 ## Context
 
 ### The failure: three of six long clips desynced, and the diagnosis sat in a comment
@@ -198,6 +227,20 @@ and the matcher places only 90.0% inside the 250 ms bound. French's ceiling is
 transcript.** Only English's blocker is one that better matching and timing could
 remove. **Same bar, opposite blocker, and the difference is the language.**
 
+> **AND THAT SENTENCE ENUMERATES TWO OF THREE LANGUAGES — `H34-M1`, 2026-08-11.**
+> *"The difference is the language"* reads as a general law and it is a
+> two-point comparison. **Spanish is not in it, and Spanish has never been
+> measured on anything longer than 22 words.** `asr_coverage_ceiling` exists on
+> **11 committed clip rows — 9 `fr`, 2 `en`, zero `es`**, and the largest Spanish
+> bar figure anywhere is `matched_within_drift_pct` **68.2** on **22 display
+> words / 11.66 s** (`spike-a-results.json#[lang=es]`, `passes_matched_bar:
+> false`). **Two languages with opposite blockers do not predict a third** —
+> that is the whole content of the finding above, applied to itself. The
+> marginal cost of closing it is **one decode**: `es-para.wav`, **222 display
+> words / 74.93 s**, exists, was synthesized and was transcribed
+> (`spike-a-groundtruth.json`, `match_rate_pct` 98.2). *(Owner: Forge with
+> Scribe · due 2026-08-13.)*
+
 **The re-sync path never fired on English.** `clips[].resyncs` is 0 — the clip
 never lost the text. Under the same matcher **2 of the 6** French long clips fire
 re-syncs; the **3 of 6** figure in the Context above is the *pre-repair*
@@ -222,7 +265,23 @@ recogniser wrote in American form. Those words were **recognised correctly and
 failed to match** — a `worker/src/normalize/spokenForms` gap, not an ASR limit,
 and it costs coverage on most English published outside the United States. It is
 a **probe, not a result**: no audio was re-synthesized, so **98.0 is if anything
-understated.** *(Build item: roadmap Phase 4.5, owner Forge.)*
+understated.**
+
+**BUILT, AND THE PROBE WAS RIGHT TO THE TOKEN — 2026-08-11.** Forge shipped the
+fold (`worker/src/normalize/orthography.ts`). Re-scored through the **product**
+normaliser on the **same audio and the same decode**, the ceiling moves
+**98.0 → 99.1** and the absent count **25 → 11** —
+`verdict.orthography_fold_predicted_ceiling_pct` **99.1** equals
+`orthography_fold_observed_ceiling_pct` **99.1**, predicted absent **11** equals
+observed absent **11**, and the artifact says so itself in
+`orthography_fold_matches_its_prediction: true`. **The bar moved 0.9 pp**
+(`verdict.orthography_fold_delta_pp`), from 90.0 to **90.9** — the fold's whole
+value, and a fifth of the shortfall. *A pre-registered prediction that reproduces
+exactly is worth recording as such: it is the strongest evidence in this ADR that
+the ceiling derivation measures what it claims to.* **The figures live in
+`spike-a-english-drift.json`; `spike-a-english.json` has not been re-run and its
+chapter row is now the pre-fold record.** *(Build item closed: roadmap Phase 4.5,
+owner Forge.)*
 
 ### The derivation is a strict upper bound, and it is falsified rather than asserted
 

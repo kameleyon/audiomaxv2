@@ -42,7 +42,7 @@ emits, so there is no build output to ignore.
 
 What exists is: the working agreement (`CLAUDE.md`), the root `README.md`, this
 file, `CODEOWNERS`, `docs/`, the documentation gate (`tools/doc-check.mjs`),
-brand assets, and **33 audit records**.
+brand assets, and **36 audit records**.
 
 Contributing today means **documents and decisions**: picking up a Phase 0 item,
 running a spike and recording its evidence, or correcting a document that has
@@ -69,14 +69,47 @@ record.
 ```bash
 node tools/doc-check.mjs             # must exit 0
 node tools/doc-check.mjs --self-test # must report 94 passed, 0 failed
+node tools/doc-check.mjs --figure-check --self-test  # must report 14 passed, 0 failed
 node .github/scripts/secret-scan.mjs --self-test  # must report 32 passed, 0 failed
 node .github/scripts/secret-scan.mjs              # reads STAGED BLOBS, not the disk
 node supabase/tests/verify_voice_langs.mjs        # static proofs, read from the migration text
 ```
 
-Both self-test counts are checked by `[SD-SELFTEST]`, which obtains the
-`secret-scan` number by **running** that harness rather than by keeping a second
-copy of it. So these two numbers cannot drift from the harnesses: adding a guard
+### `--figure-check` — run it on every figure you write, not only at the gate
+
+**Any number you put in prose must first survive this, and it takes one line:**
+
+```bash
+node tools/doc-check.mjs --figure-check 'spike-a-english.json#verdict.chapter_bound_by=drift'
+```
+
+Exit 0 means a **committed artifact** says that, at that key path. Exit 1 tells
+you which of four ways it does not: no such artifact, no such key, an ambiguous
+row selector, or a wrong value. **A missing key is a failure and never an absence
+to shrug at** — the relay error that motivated the tool claimed a key for rows
+that do not carry one, which is a claim about nothing rather than a claim that is
+merely wrong.
+
+Two things that trip people up. **It reads the git INDEX, not the disk** (J29-m4),
+because the figure a document quotes has to be one a fresh clone can reproduce —
+so an artifact you have written but not staged reports `NO SUCH ARTIFACT`, and
+that is the check working. If you need to verify a figure in an artifact you are
+not ready to stage, build a throwaway index instead of touching the real one:
+
+```bash
+cp .git/index /tmp/shadow && GIT_INDEX_FILE=/tmp/shadow git add path/to/artifact.json
+GIT_INDEX_FILE=/tmp/shadow node tools/doc-check.mjs --figure-check 'artifact.json#key=value'
+```
+
+And **the artifact must be staged in the same commit that publishes the figure** —
+that is `CLAUDE.md`'s rule, *"a number is measured because a committed run emitted
+it"*, and the shadow index verifies a figure without discharging it.
+
+**All three `--self-test` counts above are checked by `[SD-SELFTEST]`**, which
+scopes each claim by the harness named on its own line — `doc-check`,
+`figure-check`, or `secret-scan` — and obtains the `secret-scan` number by
+**running** that harness rather than by keeping a second copy of it. So none of
+the three can drift from its harness: adding a guard or a figure-check trial
 without a specimen, or a specimen without updating this line, turns `doc-check`
 red.
 

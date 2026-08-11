@@ -9,6 +9,7 @@ import {
 } from './index.ts';
 import { digitRuns, digitsOf, wholeNumberWord, yearForm } from './numerals.ts';
 import { abbreviationForms } from './abbreviations.ts';
+import { ORTHOGRAPHY_VARIANT_COUNT, orthographyForms } from './orthography.ts';
 import { normalizeRequest } from './cli.ts';
 
 /** Does `forms` contain this exact sequence? */
@@ -203,5 +204,83 @@ describe('the delegation bridge', () => {
       () => normalizeRequest({ lang: 'en' } as unknown as { lang: string; display: string[] }),
       /must be an array/,
     );
+  });
+});
+
+describe('orthographyForms — en-GB against en-US', () => {
+  it('was BUILT: the closed lists reached a real number of spellings', () => {
+    // An empty table and a table that folds nothing look identical from outside,
+    // and every other guard here would still pass over an empty one.
+    assert.ok(ORTHOGRAPHY_VARIANT_COUNT > 200, `only ${ORTHOGRAPHY_VARIANT_COUNT} variants`);
+  });
+
+  it('offers the American spelling of the tokens the English chapter clip LOST', () => {
+    // Every one of these is in `spike-a-english.json`
+    // `clips[].asr_coverage_ceiling.absent_display_tokens_sample`: recognised
+    // correctly, spelled the other way, and therefore never placed.
+    for (const [gb, us] of [
+      ['digitisation', 'digitization'], ['programme', 'program'], ['colours', 'colors'],
+      ['digitised', 'digitized'], ['organisation', 'organization'],
+      ['synthesiser', 'synthesizer'], ['recognise', 'recognize'],
+      ['catalogue', 'catalog'], ['neighbouring', 'neighboring'], ['colour', 'color'],
+      ['digitising', 'digitizing'], ['cancelled', 'canceled'],
+    ] as const) {
+      assert.ok(orthographyForms(gb, 'en').includes(us), `${gb} -> ${us}`);
+    }
+  });
+
+  it('is SYMMETRIC — the page may be the American one', () => {
+    assert.ok(orthographyForms('organization', 'en').includes('organisation'));
+    assert.ok(orthographyForms('color', 'en').includes('colour'));
+    assert.ok(orthographyForms('program', 'en').includes('programme'));
+    assert.ok(orthographyForms('canceled', 'en').includes('cancelled'));
+  });
+
+  it('does NOT respell -ise words that are -ise in American English too', () => {
+    // The measured failure: the first run of the probe in `english.py` emitted
+    // `raize` and `precize` into its own residual list, INVENTING two absent
+    // tokens while explaining twelve.
+    for (const w of ['raise', 'raised', 'raising', 'precise', 'promise', 'surprise',
+      'wise', 'advised', 'exercises', 'comprising', 'devise', 'franchise']) {
+      assert.deepEqual(orthographyForms(w, 'en'), [], `${w} must not be respelled`);
+    }
+  });
+
+  it('does NOT respell -ize words that are -ize in British English too', () => {
+    for (const w of ['size', 'sizes', 'prize', 'seize', 'capsize', 'maize']) {
+      assert.deepEqual(orthographyForms(w, 'en'), [], `${w} must not be respelled`);
+    }
+  });
+
+  it('never turns a word into a DIFFERENT real word', () => {
+    // The reason `-our`, `-re` and doubled-`l` are closed lists rather than
+    // suffix rules. A dead candidate costs nothing; `four -> for` is a highlight
+    // on the wrong word, several hundred times a chapter.
+    for (const w of ['four', 'your', 'tour', 'hour', 'pour', 'sour', 'our',
+      'here', 'more', 'store', 'figure', 'are', 'were', 'future',
+      'filled', 'called', 'spelled', 'killed', 'pulled', 'told']) {
+      assert.deepEqual(orthographyForms(w, 'en'), [], `${w} must be left alone`);
+    }
+  });
+
+  it('is en-only, and empty on an unfolded or empty token', () => {
+    assert.deepEqual(orthographyForms('colour', 'fr'), []);
+    assert.deepEqual(orthographyForms('colour', 'es'), []);
+    assert.deepEqual(orthographyForms('', 'en'), []);
+  });
+
+  it('reaches the matcher through spokenForms, as a ONE-token sequence', () => {
+    // A guard on the table alone would pass while the wiring was absent — the
+    // shape of `J33-M2`, one directory away.
+    assert.ok(hasForm(spokenForms('digitisation', 'en'), ['digitization']));
+    assert.ok(hasForm(spokenForms('Colours,', 'en'), ['colors']));
+    assert.ok(hasForm(spokenForms('catalogue,', 'en'), ['catalog']));
+    // ...and it does not disturb the exact fold, which must stay FIRST.
+    assert.deepEqual(spokenForms('digitisation', 'en')[0], ['digitisation']);
+  });
+
+  it('adds nothing for French and Spanish display tokens', () => {
+    assert.deepEqual(spokenForms('couleur', 'fr'), [['couleur']]);
+    assert.deepEqual(spokenForms('organizacion', 'es'), [['organizacion']]);
   });
 });
