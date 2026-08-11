@@ -12,10 +12,30 @@ Design intent, not gate approval — see [the status note](README.md#what-accept
 > **Read the headline before the improvement.** The matcher got substantially
 > better and **the bar did not move**:
 >
-> **Even a perfect matcher cannot clear 95 on chapter-length audio with
+> **Even a perfect matcher cannot clear 95 on chapter-length FRENCH audio with
 > faster-whisper `base` — the ceiling is 3.0–5.2 pp below the bar on all six
-> long clips — while the same measurement puts short-clip ceilings above the
-> bar, so the constraint is length-dependent.**
+> long clips — while the same measurement puts short French clip ceilings above
+> the bar, so within French the constraint is length-dependent.**
+
+> **SCOPED 2026-08-10, THE SAME DAY, BY `spike-a-english.json` — read this
+> before the sections below.** For one revision the banner above and three
+> passages in this ADR said *"chapter-length audio"* with **no language on
+> them**, and `README.md`, `docs/glossary.md`, spec §7.1a and `ADR-0001` copied
+> them that way. **Every ceiling quoted in this ADR is correct. The scope of the
+> sentences around them was not.** All nine clips it rests on are French —
+> `spike-a-voices.json`'s `clips[].lang_code` is `fr` in every row.
+>
+> **English is DRIFT-bound. French is ASR-bound. Same bar, opposite blocker.**
+> The English recogniser emits **98.0%** of display tokens in a form the matcher
+> could accept — **above** the bar — and this matcher converts only **90.0%**
+> into placements inside 250 ms. **English still fails; nothing passes.** What
+> changes is *why*, and the *why* is the product decision.
+>
+> **Nothing in this ADR is withdrawn.** The decisions it records — forward-only
+> re-sync, ranked folds, the matcher living in `worker/src/match/` — are
+> unaffected, and so are the French figures. What is corrected is a
+> generalisation that was never measured. See
+> [the per-language reading](#the-blocker-is-per-language-and-english-is-drift-bound).
 
 ## Context
 
@@ -103,14 +123,16 @@ state `A0` reproducing the committed artifact exactly: **re-sync +23.9 pp mean
 where nothing diverges, which is the evidence that it repairs desync rather than
 loosening matching generally.
 
-### And it does not reach the bar — because on long audio the bar is not matcher-bound
+### And it does not reach the bar — because on long FRENCH audio the bar is not matcher-bound
 
 The measurement is `clips[].asr_coverage_ceiling.coverage_ceiling_pct_any_matcher`
-in `aligner/spike-a/out/spike-a-voices.json`, emitted for **all nine clips**.
+in `aligner/spike-a/out/spike-a-voices.json`, emitted for **all nine clips** —
+**all nine of which are French.** That file's `clips[].lang_code` is `fr` in
+every row, and it is the whole reason the section below exists.
 
-> **On the best long clip, 95 of 1186 display tokens appear in the transcript in
-> no form the matcher could accept** — so the ceiling for **any** matcher is
-> **92.0%.**
+> **On the best long French clip, 95 of 1186 display tokens appear in the
+> transcript in no form the matcher could accept** — so the ceiling for **any**
+> matcher is **92.0%.**
 
 | clip | absent | ceiling | vs the 95 bar |
 | --- | --- | --- | --- |
@@ -124,11 +146,11 @@ in `aligner/spike-a/out/spike-a-voices.json`, emitted for **all nine clips**.
 **Below the bar on every long clip, by 3.0–5.2 pp.** `sync_grade` stays
 `unmeasured`.
 
-### The constraint is length-dependent, and the control is what shows it
+### Within French the constraint is length-dependent, and the control is what shows it
 
 **Quoting only the long clips would make this a claim about the corpus. It is
-not — it is a claim about clip length.** The same measurement on the 8–10 s
-clips, 24 display words each:
+not — it is a claim about clip length *within French*.** The same measurement on
+the 8–10 s clips, 24 display words each:
 
 | clip | ceiling | achieved (`matched_within_drift_pct`) | the gap is |
 | --- | --- | --- | --- |
@@ -136,18 +158,71 @@ clips, 24 display words each:
 | `fr-short-feminine` | **95.8%** — above the bar | 70.8 | **drift** |
 | `fr-short-narrateur` | 91.7% — below the bar | 66.7 | drift dominates |
 
-**On 8-second audio the recogniser emits nearly everything and the loss is
-drift; on chapter-length audio the loss is recognition.**
+**On 8-second French audio the recogniser emits nearly everything and the loss is
+drift; on chapter-length French audio the loss is recognition.**
 
 *(Stated precisely because a control quoted only where it agrees is not a
 control: **two of the three** short ceilings clear the bar, not all three. The
 third sits at 91.7% — still 25 pp above what that clip actually scored, so drift
 remains the binding constraint there and the length contrast holds.)*
 
-**So the ceiling is not a constant of the corpus; it is a property of clip
-length.** That reframes Phase 6 **for chapter-length audio specifically**: the
-open question is the ASR configuration — model size, decode parameters, or a
-different engine — and further matcher work cannot answer it.
+**So within French the ceiling is not a constant of the corpus; it is a property
+of clip length.** That reframes Phase 6 **for chapter-length French audio
+specifically**: the open question there is the ASR configuration — model size,
+decode parameters, or a different engine — and further matcher work cannot answer
+it. **It does not reframe Phase 6 for English**, where the ceiling clears the bar
+and matching and timing are exactly what is left.
+
+### The blocker is per-language, and English is drift-bound
+
+**This section was added 2026-08-10, hours after the rest of this ADR, and it
+exists because the sections above were read as general.** They are French. The
+generalisation was not measured, and when it was measured it did not hold.
+
+`aligner/spike-a/out/spike-a-english.json` scores English end to end at chapter
+length — **1246** display words, **453.73** s of Lemonfox audio, one voice
+(`Adam`), `supports_chapter_length_claim` computed by the artifact rather than
+asserted by the author.
+
+| quantity | key | value |
+| --- | --- | --- |
+| end to end | `clips[].matched_within_drift_pct` | **90.0**, CI95 **88.3**–**91.6**, `passes_matched_bar: false` |
+| ASR ceiling | `clips[].asr_coverage_ceiling.coverage_ceiling_pct_any_matcher` | **98.0**, `coverage_ceiling_clears_bar: true` |
+| what binds it | `verdict.chapter_bound_by` | **`"drift"`**, headroom **8.0** pp |
+| re-syncs fired | `clips[].resyncs` | **0** |
+
+**English fails and English is not ASR-bound.** The recogniser emits 98.0% of
+display tokens in a form the matcher could accept — **3.0 pp above the bar** —
+and the matcher places only 90.0% inside the 250 ms bound. French's ceiling is
+**89.8–92.0**, below the bar, so **no matcher can pass French on that
+transcript.** Only English's blocker is one that better matching and timing could
+remove. **Same bar, opposite blocker, and the difference is the language.**
+
+**The re-sync path never fired on English.** `clips[].resyncs` is 0 — the clip
+never lost the text. Under the same matcher **2 of the 6** French long clips fire
+re-syncs; the **3 of 6** figure in the Context above is the *pre-repair*
+inadmissible count and is a different quantity. Both are true and they are not
+interchangeable.
+
+**Read it with its limits, which are larger than the French arm's.** **One voice,
+one provider, one replicate.** The French arm needed six clips before it could
+say anything about voice at all. **There is no characterised English noise
+floor** — the 4.3 pp within-voice figure is Fish at temperature 0.8, and
+Lemonfox's sampling behaviour is unmeasured. The 224-word `en-para` clip scores
+**93.3** against a **99.1** ceiling and carries
+`clips[].supports_chapter_length_claim: false`; the **93.3 → 90.0 difference is
+not a length effect**, because `verdict._length_effect_reading` records that the
+two clips are **different texts**.
+
+**And the run surfaced a product defect, running in the conservative direction.**
+`clips[].orthography_probe` recomputes the ceiling after respelling the **display
+text** from en-GB to en-US against the **same observations from the same decode**:
+**98.0 → 99.1**, because **14 of the 25** absent tokens were British spellings the
+recogniser wrote in American form. Those words were **recognised correctly and
+failed to match** — a `worker/src/normalize/spokenForms` gap, not an ASR limit,
+and it costs coverage on most English published outside the United States. It is
+a **probe, not a result**: no audio was re-synthesized, so **98.0 is if anything
+understated.** *(Build item: roadmap Phase 4.5, owner Forge.)*
 
 ### The derivation is a strict upper bound, and it is falsified rather than asserted
 
@@ -159,6 +234,12 @@ is one the recogniser did not emit in any form the matcher could accept, and NO
 matcher can place it."* The window is **3** because that is the longest sequence
 `spokenForms` emits (`mille neuf cent`).
 
+**What `spokenForms` does NOT fold is now measured, not assumed:** it folds
+diacritics and elisions and **does not fold en-GB against en-US**, which costs
+**14 of 25** absent tokens on the English chapter clip. Because the ceiling is
+computed with the product's own tables, **every ceiling in this ADR inherits that
+gap and is therefore understated, never overstated** — the bound stays strict.
+
 It is **order-free and one-to-many-free on purpose** — it ignores monotonicity
 and lets one observation serve several display tokens — *"so it is a STRICT
 UPPER BOUND and a real matcher can only do worse. It is NOT a prediction of what
@@ -169,10 +250,19 @@ transcript and the ceiling must fall.* *"A 'ceiling' that ignored its own input
 would be a constant wearing a derivation."*
 
 **Two keys, no collisions, deliberately.** `coverage_ceiling_pct_any_matcher` and
-`display_tokens_absent_from_transcript` appear **nowhere else in the
+`display_tokens_absent_from_transcript` **name no other quantity anywhere in the
 repository**, and the block **refuses to restate** `match_rate_pct` or
 `matched_within_drift_pct` — it names them instead, *"so they cannot drift out of
 agreement with themselves."*
+
+*(Corrected 2026-08-10. This read *"appear **nowhere else** in the
+repository"* — a stronger claim than the one that matters, and already false when
+written: the same commit added `coverage_ceiling_pct_any_matcher` to
+`doc-check.mjs`'s `[ART-FIGURE]` `TRACKED`, which is the guard that makes the key
+load-bearing, and `spike-a-english.json` now emits it as well. **The property
+worth having is that no OTHER quantity wears these names**, which survives every
+new site; a literal claim a `grep` disproves does not, and this ADR is the wrong
+document to leave one in.)*
 
 > **A withdrawn figure, recorded because the withdrawal is the lesson.**
 > An earlier draft of this ADR carried *"~89.5% after drift"* as the ceiling.

@@ -42,7 +42,7 @@ emits, so there is no build output to ignore.
 
 What exists is: the working agreement (`CLAUDE.md`), the root `README.md`, this
 file, `CODEOWNERS`, `docs/`, the documentation gate (`tools/doc-check.mjs`),
-brand assets, and **32 audit records**.
+brand assets, and **33 audit records**.
 
 Contributing today means **documents and decisions**: picking up a Phase 0 item,
 running a spike and recording its evidence, or correcting a document that has

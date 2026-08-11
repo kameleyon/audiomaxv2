@@ -31,6 +31,15 @@
     "wav_header_length_bogus": false
   },
   {
+    "path": "en-long.wav",
+    "bytes": 21778846,
+    "sha256": "cd7f9c82b7d975a95dda9de8dfafbc76491749760103be1b90d651a82e828a26",
+    "seconds": 453.73,
+    "sample_rate": 24000,
+    "channels": 1,
+    "wav_header_length_bogus": false
+  },
+  {
     "path": "en-para.wav",
     "bytes": 3512446,
     "sha256": "b8f7ed91d47229317755d34a3cd2c32faf438f88ac816f1638d06487b92ce2bb",

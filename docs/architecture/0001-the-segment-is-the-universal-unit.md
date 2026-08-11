@@ -132,13 +132,32 @@ matcher that recovers within a few tokens still loses those tokens at every
 seam. **~1,000 characters of audio would cross roughly four seams.**
 *(Owner: Forge · due 2026-08-18; roadmap Phase 7 carries the item.)*
 
-**2. Accuracy is currently bound by recognition, not by clip length**
-(ADR-0006). The 95 bar is **ASR-bound** — 93 of 125 unplaced tokens on the best
-long clip are words the ASR never wrote — so shortening segments to help
-alignment would not move the bar today. **That is a reason not to resize yet,
-not evidence that size is irrelevant**: the drift-accumulation question the size
-target was meant to bound (`H26-M7`) is still open, and its intervals have not
-been re-scored under the new matcher.
+**2. In FRENCH, accuracy is currently bound by recognition, not by clip length**
+(ADR-0006). The 95 bar is **ASR-bound in French** — **95** of 125 unplaced tokens
+on the best long French clip are words the ASR never wrote — so shortening
+segments to help alignment would not move the French bar today. **That is a
+reason not to resize yet, not evidence that size is irrelevant**: the
+drift-accumulation question the size target was meant to bound (`H26-M7`) is
+still open, and its intervals have not been re-scored under the new matcher.
+
+*(Corrected 2026-08-10, twice over, and this passage is why the reconciliation
+grep is a grep. **The count was wrong:** it read *"93 of 125"*, and no artifact
+produces 93 — `spike-a-voices.json` reports
+`display_tokens_absent_from_transcript: 95` against `unplaced_display_tokens:
+125` on `fr-long-locked-r2`. **And the scope was wrong:** the sentence carried no
+language while the nine clips under it are French in every row. This file was on
+no handover list for either fix; `grep -rn -F "ASR-bound"` found it.)*
+
+**And in ENGLISH the same argument runs the other way, which strengthens the
+conclusion rather than weakening it.** `spike-a-english.json` puts the English
+chapter ceiling at **98.0** — above the bar — and
+`verdict.chapter_bound_by: "drift"`, so English *is* bound by placement and
+timing. **Segment size still is not the lever:** the English chapter clip is one
+continuous 453.73 s decode with `clips[].resyncs: 0`, so its 5.0 pp shortfall is
+not a boundary or a recovery problem that smaller segments would relieve — and
+chunking would **add** seams, which is the open cost the paragraph above this one
+prices. **So both languages point at leaving 1,000 characters alone, for two
+different reasons, and neither reason is "size is irrelevant".**
 
 **So the 1,000-character target is unchanged, and is now unchanged for a stated
 reason rather than by default.**

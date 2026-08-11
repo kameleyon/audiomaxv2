@@ -216,6 +216,26 @@ So, before a figure may appear in prose:
 3. **The key name states the quantity actually measured.** A name that claims
    more than the code does acquires defenders — `compute_cost_per_audio_hour_usd`
    times one stage of three and is now pinned by `[ART-METRIC]`.
+4. **The SCOPE of the sentence is part of the claim, and it is measured the same
+   way.** Added 2026-08-10, after a defect the three rules above do not reach:
+   *"Even a perfect matcher cannot clear 95 on chapter-length audio"* was
+   published in **five documents** with **every figure correct** and **no
+   language on it**. All nine clips underneath it were French —
+   `spike-a-voices.json`'s `clips[].lang_code` is `fr` in every row — and when
+   English was measured at chapter length it came back **drift-bound with the
+   ceiling above the bar**, the opposite blocker. **A correct number inside an
+   unmeasured generalisation is an unmeasured claim**, and it is the more
+   dangerous half, because the figure survives every check and the sentence
+   survives none.
+
+   > **A figure travels with the population it was measured on** — the language,
+   > the voice, the provider, the clip length, the n — **and a dimension the run
+   > did not vary is a dimension the sentence may not quantify over.**
+
+   The cheap enforcement is the reconciliation grep, which already found the
+   fifth site (`ADR-0001`, carrying *"93 of 125"* — a count no artifact
+   produces — under a claim with no language). **Grep the claim, not only the
+   identifier.**
 
 ### Relaying carries the same burden as writing
 

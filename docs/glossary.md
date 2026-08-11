@@ -451,33 +451,71 @@ movable **by** the measurement and not after it. *(Owner: Forge · due
 2026-08-14.)* Until it returns, `transcription_unreliable` has no producer rule
 and word-sync quality is **measured and below bar** for `en`/`es`/`fr` (SPIKE A).
 
-**And since 2026-08-10 we know what the bar is bound by.** The matcher was
-repaired ([ADR-0006](architecture/0006-the-matcher-re-synchronises-and-lives-in-the-product.md))
+**And since 2026-08-10 we know what the bar is bound by — PER LANGUAGE, which is
+not the same claim this entry made for one day.** The matcher was repaired
+([ADR-0006](architecture/0006-the-matcher-re-synchronises-and-lives-in-the-product.md))
 and the long French clips moved from 20.9–71.4 to **78.4–86.3**, with the three
 desynced clips recovered and **inadmissible clips 3 → 0**. **Nothing clears 95** —
-and the reason is no longer the matcher:
+and in French the reason is no longer the matcher:
 
-> On the best long clip, **95 of 1186 display tokens appear in the transcript in
-> no form the matcher could accept**, so the ceiling for *any* matcher is
-> **92.0%**. Across all six long clips: **89.8%–92.0%, i.e. 3.0–5.2 pp below the
-> 95 bar.**
+> On the best long **French** clip, **95 of 1186 display tokens appear in the
+> transcript in no form the matcher could accept**, so the ceiling for *any*
+> matcher is **92.0%**. Across all six long French clips: **89.8%–92.0%, i.e.
+> 3.0–5.2 pp below the 95 bar.**
 
-**On chapter-length audio the remaining gap is recognition, not matching** — even
-a perfect matcher cannot clear 95 with faster-whisper `base`, so the open
-question is the ASR configuration itself.
+**In French, at chapter length, the remaining gap is recognition, not matching** —
+even a perfect matcher cannot clear 95 with faster-whisper `base`, so the open
+question **for French** is the ASR configuration itself.
 
-**But the constraint is length-dependent, and that is the part to remember.** On
-the 8–10 s control clips, two of three ceilings are **95.8% — above the bar** —
-while those clips score 70.8 and 75.0, so there the loss is **drift, not
-recognition**. *(The third short clip's ceiling is 91.7%, below the bar; it
-scores 66.7, so drift still dominates.)* **The ceiling is a property of clip
-length, not a constant of the corpus.**
+**English is the opposite case, and the contrast is the whole finding.**
+`aligner/spike-a/out/spike-a-english.json`, chapter length — **1246** display
+words, **453.73** s:
 
-The figure is `coverage_ceiling_pct_any_matcher` in
-`aligner/spike-a/out/spike-a-voices.json`. It is a **strict upper bound** — the
-derivation is deliberately order-free and one-to-many-free, so a real matcher can
-only do worse, and it is **not** a prediction of what a better matcher would
-score. **Do not confuse it with `match_rate_pct`** (coverage this matcher
-achieved) or `matched_within_drift_pct` (what survived the 250 ms bound); the
-artifact deliberately does not restate either inside the ceiling block, because
-copying them is exactly what produced an earlier mislabelling.
+> `clips[].matched_within_drift_pct` **90.0** (CI95 **88.3**–**91.6**),
+> `passes_matched_bar: false` — **English fails.** But
+> `clips[].asr_coverage_ceiling.coverage_ceiling_pct_any_matcher` is **98.0**
+> with `coverage_ceiling_clears_bar: true`, so `verdict.chapter_bound_by` is
+> **`"drift"`** with **8.0 pp** of headroom. **Same bar, opposite blocker:**
+> French cannot pass on its transcript whatever the matcher does; English can,
+> and this matcher does not.
+
+**So the blocker is a property of the LANGUAGE, not of the duration.** Within
+French the constraint is also length-dependent: on the 8–10 s control clips, two
+of three ceilings are **95.8% — above the bar** — while those clips score 70.8
+and 75.0, so there the loss is **drift, not recognition**. *(The third short
+clip's ceiling is 91.7%, below the bar; it scores 66.7, so drift still
+dominates.)* But English at **453.73** s is drift-bound too, so *"the ceiling is
+a property of clip length"* — which this entry asserted without a language on it
+— **is true inside French and false across languages.**
+
+**Read the English result with its limits.** **One voice (Lemonfox, `Adam`), one
+provider, one replicate**, where the French arm needed six clips to say anything
+about voice; **no English noise floor exists**, because the 4.3 pp within-voice
+floor is Fish at temperature 0.8. The 224-word `en-para` clip scores **93.3**
+against a **99.1** ceiling and carries
+`clips[].supports_chapter_length_claim: false` — the artifact refuses to let a
+paragraph stand in for a chapter — and the **93.3 → 90.0 difference is not a
+length effect**, because `verdict._length_effect_reading` records that the two
+clips are different texts.
+
+The figure is `coverage_ceiling_pct_any_matcher`, in
+`aligner/spike-a/out/spike-a-voices.json` for **French** (nine clips, every
+`clips[].lang_code` is `fr`) and `aligner/spike-a/out/spike-a-english.json` for
+**English**. It is a **strict upper bound** — the derivation is deliberately
+order-free and one-to-many-free, so a real matcher can only do worse, and it is
+**not** a prediction of what a better matcher would score. **Do not confuse it
+with `match_rate_pct`** (coverage this matcher achieved) or
+`matched_within_drift_pct` (what survived the 250 ms bound); the artifact
+deliberately does not restate either inside the ceiling block, because copying
+them is exactly what produced an earlier mislabelling. **And never quote it
+without the language** — that omission is what turned a French result into a
+claim about all chapter-length audio in five documents at once.
+
+**SPANISH HAS NO CHAPTER-LENGTH ARM AT ALL, and that gap is now the conspicuous
+one.** There is no `es` coverage ceiling anywhere in `aligner/spike-a/out/` and
+no `es` end-to-end figure above 24 display words. *"Measured and below bar for
+`en`/`es`/`fr`"* above is still true — but for `es` it is true on the **short**
+corpora only, and the two languages that have been measured at chapter length
+came back with **opposite** blockers. **Nothing in either result predicts the
+third**, and reading one into Spanish would be the same move this entry has just
+finished undoing. *(Owner: Forge · due 2026-08-16, with the Phase 0 re-score.)*

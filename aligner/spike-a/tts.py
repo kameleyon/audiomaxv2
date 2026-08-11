@@ -76,11 +76,20 @@ def post(url: str, body: dict, headers: dict, timeout: int = 180) -> bytes:
         return r.read()
 
 
-def synth_lemonfox(text: str, voice: str, key: str) -> bytes:
+def synth_lemonfox(text: str, voice: str, key: str, timeout: int = 180) -> bytes:
+    """The `en` route (spec 3.5).
+
+    `timeout` is explicit because a CHAPTER-length payload renders for minutes,
+    and the default 180 s was sized for the 10-second fixtures. A socket timeout
+    on a TTS call is the worst failure shape available: the vendor has rendered
+    the audio and BILLED for it, and the caller has nothing. Raising the ceiling
+    for a long call is not a retry -- there is still exactly one call.
+    """
     return post(
         "https://api.lemonfox.ai/v1/audio/speech",
         {"input": text, "voice": voice.lower(), "response_format": "wav"},
         {"Authorization": f"Bearer {key}"},
+        timeout=timeout,
     )
 
 

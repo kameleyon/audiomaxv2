@@ -1873,6 +1873,22 @@ function runChecks(src, opts = {}) {
       // newest numbers in the repository.
       { key: 'matched_within_drift_pct_silence_tolerant', alias: /silence[ -]tolerant/i },
       { key: 'matched_within_drift_pct_after_offset', alias: /offset[ -]corrected/i },
+      // ── The ASR ceiling. UNTRACKED UNTIL 2026-08-10, and it was the most
+      // load-bearing untracked number in the repository: "even a perfect matcher
+      // cannot clear 95 on chapter-length audio" is a claim about THIS key, it
+      // reframes Phase 6, and README, the spec, the roadmap, ADR-0006 and the
+      // glossary all quote it. Round 32's audit said so in terms — "[ART-FIGURE]
+      // does NOT EVEN ABSTAIN on it" — because a metric absent from this list is
+      // not merely unchecked, it is invisible to the abstention counter that
+      // exists to bound the unchecked surface. That is `J32-M3`'s exact shape on
+      // the figure a product-scope decision now rests on.
+      //
+      // The alias is deliberately narrow: `coverage ceiling` and not `ceiling`.
+      // "the ceiling of the refinement stage" in the FA discussion is a DIFFERENT
+      // quantity, and a loose alias would bind the forced-alignment figures to
+      // this metric and raise a false Major on prose that is correct — which is
+      // how a guard gets reworded around instead of trusted.
+      { key: 'coverage_ceiling_pct_any_matcher', alias: /(?:asr[ -])?coverage[ -]ceiling/i },
     ];
     // The declared bars and bounds. They are targets stated beside a measurement,
     // never a measurement, and they are declared HERE rather than discovered so

@@ -4,7 +4,7 @@ An ADR records **why** a decision was made, by whom, and what it costs — for t
 engineer who joins six months from now and has read none of the audit trail.
 
 Until this directory existed, the decisions below lived only as prose inside
-32 audit records and a design spec that is gitignored. That is tribal
+33 audit records and a design spec that is gitignored. That is tribal
 knowledge with a filename. These 6 ADRs are the first correction.
 
 ## Index
@@ -16,7 +16,7 @@ knowledge with a filename. These 6 ADRs are the first correction.
 | [0003](0003-haitian-creole-tts-routing.md) | Gemini TTS is reached via OpenRouter, not directly | **Superseded in part by 0005** (language scope) and **fully superseded for routing** (J29-C3). Accepted as a record of *method*, not of routing. Its `CLAUDE.md` constraint-2 conflict is **closed by removal** — audiomax has no Gemini path to fall back through | §3.5 |
 | [0004](0004-the-accessibility-gate-is-an-api-conformance-harness.md) | The accessibility gate is an API conformance harness | Accepted — **obligation not discharged** | roadmap Phase 0 |
 | [0005](0005-haitian-creole-is-removed-from-scope.md) | Haitian Creole is removed from scope | Accepted — owner decision, 2026-08-08. **Removed the day it was proven to work**, so this is product scope, not a technical limit | §3.5, §9 |
-| [0006](0006-the-matcher-re-synchronises-and-lives-in-the-product.md) | The matcher re-synchronises, and it lives in the product | Accepted, 2026-08-10 — **completes 0002**, whose "match step" had no implementation. Supersedes `J30-M8`'s bound. **Read the ceiling, not the improvement: the 95 bar is ASR-bound, not matcher-bound** | §6.1, §7.1a |
+| [0006](0006-the-matcher-re-synchronises-and-lives-in-the-product.md) | The matcher re-synchronises, and it lives in the product | Accepted, 2026-08-10 — **completes 0002**, whose "match step" had no implementation. Supersedes `J30-M8`'s bound. **Read the ceiling, not the improvement — and read it per language: the 95 bar is ASR-bound in FRENCH and DRIFT-bound in ENGLISH. Nothing passes; the blockers are opposite** | §6.1, §7.1a |
 
 ## What "Accepted" means here, and what it does not
 

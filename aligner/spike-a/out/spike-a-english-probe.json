@@ -1,0 +1,23 @@
+{
+  "characters_sent": 7482,
+  "utf8_bytes_sent": 7482,
+  "display_words_in_text": 1246,
+  "rate_usd_per_1k_characters": 0.0025,
+  "estimated_usd": 0.0187,
+  "_rate_source": "resources/research/2026-08-08-provider-rates.md — Lemonfox TTS, $2.50 per 1,000,000 characters, Tier B, retrieved 2026-08-08. Lemonfox bills CHARACTERS, not UTF-8 bytes; the byte count is recorded beside it because Fish bills bytes and the two must never be read off the same column.",
+  "path": "en-long.wav",
+  "bytes": 21778846,
+  "sha256": "cd7f9c82b7d975a95dda9de8dfafbc76491749760103be1b90d651a82e828a26",
+  "seconds": 453.73,
+  "sample_rate": 24000,
+  "channels": 1,
+  "provider": "lemonfox",
+  "voice": "Adam",
+  "lang_code": "en",
+  "text_sha256": "f23bdf62cd3ce3f1cf15ded3601ffeec09be8a6890517a25a6e130066a784fd2",
+  "elapsed_seconds": 15.3,
+  "calls_made": 1,
+  "seconds_per_100_display_words": 36.41,
+  "clears_clip_floor_300s": true,
+  "looks_truncated": false
+}
